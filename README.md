@@ -1,200 +1,325 @@
 # confidential-fhevm-skill
 
-> An AI agent skill for [Zama's FHEVM Protocol](https://docs.zama.org/protocol). Drop it into Claude Code, Cursor, or Windsurf — covers **both** the Foundry track (`forge-fhevm` + `@zama-fhe/react-sdk` v3, matching the official `fhevm-react-template` today) and the Hardhat track (`@fhevm/hardhat-plugin` + SDK v2, for existing projects).
+An AI agent skill that teaches Claude Code, Cursor, and Windsurf how to build, test, and deploy confidential smart contracts on [Zama's FHEVM Protocol](https://docs.zama.org/protocol).
 
 [![Skill format](https://img.shields.io/badge/SKILL.md-Anthropic%20Agent%20Skills-blue)](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/overview)
 [![FHEVM](https://img.shields.io/badge/%40fhevm%2Fsolidity-0.11.1-FFD208)](https://docs.zama.org/protocol)
 [![SDK](https://img.shields.io/badge/%40zama--fhe%2Fsdk-3.0.0-FFD208)](https://github.com/zama-ai/sdk)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-Submitted to the **Zama Developer Program — Mainnet Season 2 — Bounty Track**.
-
 ---
 
-## 60-second judge pitch
+## What this is
 
-**Claim.** A developer who drops this skill into their AI coding agent and prompts *"build me a confidential X using FHEVM"* gets back a contract, test, deploy script, and frontend that compile, pass, and lint clean — on whichever toolchain Zama currently recommends.
+An [Anthropic Agent Skill](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/overview) — a `SKILL.md` plus supporting references, templates, and scripts — that you drop into your AI coding agent's skill directory. Once installed, your agent gains end-to-end knowledge of how to write confidential smart contracts on FHEVM: encrypted types, FHE operations, the ACL permission model, public and user decryption, ERC-7984 confidential tokens, the matching test harnesses, deploy scripts, and a Next.js + wagmi + `@zama-fhe/react-sdk` v3 frontend.
 
-**How it works.** The skill is a dual-track router. It detects the project's toolchain (Foundry vs. Hardhat) and the SDK version (`@zama-fhe/react-sdk` v3 vs. legacy v2), then guides the agent through the exact patterns and anti-patterns that match. Both tracks share an identical Solidity API (`@fhevm/solidity 0.11.1`); only tests, deploy scripts, and frontend hooks differ.
+It covers both toolchains Zama currently supports:
 
-**Verified end-to-end.** The skill was put through a fresh-developer build: a confidential voting dApp generated from one natural-language prompt onto a clean clone of `zama-ai/fhevm-react-template`. Every check below passed:
+- **Foundry track** — `forge-fhevm` for tests, the official [`fhevm-react-template`](https://github.com/zama-ai/fhevm-react-template) for full-stack scaffolding, and SDK v3 on the frontend. This is the path Zama recommends today.
+- **Hardhat track** — `@fhevm/hardhat-plugin` for mock-mode tests, the legacy [`fhevm-hardhat-template`](https://github.com/zama-ai/fhevm-hardhat-template) for contract-only projects, SDK v2 patterns on the frontend. Still supported for existing repositories.
 
-| Check | Result |
-| --- | --- |
-| `forge build` on the generated contract | clean |
-| `forge test` (17 unit tests, includes full `finalize()` with `buildDecryptionProof`) | **17 / 17 passed** |
-| `npx fhevm-lint packages/foundry/src/` | **0 findings ✓** |
-| `npx fhevm-lint packages/nextjs/{hooks,app}/` | **0 findings ✓** |
-| `pnpm next:build` (production prerender of 5 routes) | clean |
-| `pnpm chain && pnpm deploy:localhost` (anvil + FHEVM cleartext host) | `ConfidentialVoting` deployed locally on chain 31337 |
-| `curl http://localhost:3000/vote` after `pnpm start` | HTTP 200, real HTML rendered |
+The Solidity API (`@fhevm/solidity` 0.11.1) is identical between tracks. Only the surrounding tests, deploy scripts, and frontend hooks differ — the skill teaches both.
 
-The example built during that verification ships in [`examples/foundry/confidential-voting.md`](skills/confidential-fhevm/examples/foundry/confidential-voting.md) — the full contract, test suite, deploy script, hook, and page are reproduced inline so any judge can recreate the same end-to-end run in minutes.
+## Why use it
 
-**Validator.** The bundled linter (`scripts/fhevm-lint.js`) implements **20 anti-pattern rules** across Solidity AST and frontend regex layers. Verified against:
-- Clean templates (Hardhat + Foundry + SDK v3) → 0 findings, exit 0.
-- 12 hand-crafted broken fixtures in `tests/fixtures/` exercising the rules → all fire, exit 1.
+Without a skill like this, an AI agent asked to "write me a confidential voting contract using FHEVM" typically:
 
----
+- Hallucinates FHE operations that don't exist (`FHE.if`, `FHE.encrypt(true)`, `TFHE.add`).
+- Forgets to call `FHE.allowThis` after every state write, producing contracts whose state silently turns into null handles on the next transaction.
+- Uses `if` / `require` on `ebool` (the EVM cannot evaluate ciphertexts; this either fails to compile or always takes one branch).
+- Mixes up SDK v2 hooks (`useFhevm`, `useFHEEncryption`) with SDK v3 hooks (`useEncrypt`, `useUserDecrypt`, `usePublicDecrypt`).
+- Skips `FHE.fromExternal` and tries to use `externalEuint*` parameters directly.
+- Calls `FHE.decrypt(handle)` in a production contract (a test-only helper that doesn't exist on Sepolia).
+
+With this skill installed, the agent reads the Solidity API from the same source `@fhevm/solidity` ships, follows a 23-item pitfall catalogue, and validates its own output against an executable linter (`fhevm-lint`) before returning code to you. The result is a contract that compiles, tests that pass, and a frontend that builds clean on first attempt.
 
 ## What's inside
 
-| Asset | Count / size | Path |
-| --- | --- | --- |
-| Router `SKILL.md` | 386 lines (under Anthropic's 500 ceiling) | [`skills/confidential-fhevm/SKILL.md`](skills/confidential-fhevm/SKILL.md) |
-| Reference docs | **15** numbered + the bounty's "topics to cover" all addressed | [`skills/confidential-fhevm/references/`](skills/confidential-fhevm/references/) |
-| Worked examples | **4** (3 Hardhat + 1 full Foundry) | [`skills/confidential-fhevm/examples/`](skills/confidential-fhevm/examples/) |
-| Templates — Hardhat | 5 real source files (`.sol`, `.ts`, `.tsx`, `hardhat.config.ts`) | [`skills/confidential-fhevm/templates/`](skills/confidential-fhevm/templates/) |
-| Templates — Foundry | 5 real source files (`.sol`, `Test.t.sol`, `Deploy.s.sol`, `foundry.toml`, `README.md`) | [`skills/confidential-fhevm/templates/foundry/`](skills/confidential-fhevm/templates/foundry/) |
-| Templates — SDK v3 | 3 real source files (`useFHEContract.tsx`, `page.tsx`, `README.md`) | [`skills/confidential-fhevm/templates/sdk-v3/`](skills/confidential-fhevm/templates/sdk-v3/) |
-| Static linter | **20 rules**, Solidity + frontend, machine-checkable | [`skills/confidential-fhevm/scripts/fhevm-lint.js`](skills/confidential-fhevm/scripts/fhevm-lint.js) |
-| Lint fixtures | 12 deliberately-broken files exercising the rules | [`tests/fixtures/`](tests/fixtures/) |
-| Cross-tool adapters | Cursor `.mdc` + Windsurf `.md` (Foundry + SDK-v3 aware) | [`adapters/`](adapters/) |
+```
+confidential-fhevm-skill/
+├── skills/confidential-fhevm/
+│   ├── SKILL.md                         router doc — name, description, mental model, output contract
+│   ├── references/                      17 numbered deep-dive docs (one per topic)
+│   ├── examples/                        4 worked dApps (DAO voting, sealed-bid auction, payroll, confidential voting)
+│   ├── templates/                       drop-in source files: Hardhat-track + Foundry-track + SDK v3 frontend
+│   └── scripts/                         the fhevm-lint binary + a verify.sh smoke check
+├── adapters/                            same guidance reformatted for Cursor (.mdc) and Windsurf (.md)
+├── tests/fixtures/                      12 deliberately-broken Solidity / TypeScript files exercising each rule
+└── package.json                         declares the fhevm-lint bin so `npx fhevm-lint` resolves anywhere
+```
 
-Pinned to current Zama versions: `@fhevm/solidity 0.11.1`, `forge-fhevm eba2324`, `@fhevm/hardhat-plugin 0.4.2`, `@zama-fhe/sdk 3.0.0`, `@zama-fhe/react-sdk 3.0.0`, `@zama-fhe/relayer-sdk 0.4.2`, Solidity 0.8.27 (EVM `cancun`), Foundry forge 1.5+, Next.js 15.2, React 19.
+Pinned to current Zama versions: `@fhevm/solidity 0.11.1`, `forge-fhevm eba2324`, `@fhevm/hardhat-plugin 0.4.2`, `@zama-fhe/sdk 3.0.0`, `@zama-fhe/react-sdk 3.0.0`, `@zama-fhe/relayer-sdk 0.4.2`, Solidity 0.8.27 (EVM `cancun`), Foundry forge 1.5+, Hardhat 2.28+, Next.js 15.2, React 19, wagmi 2.19.
 
----
-
-## Try it (one minute)
+## Install
 
 ### Claude Code
+
 ```bash
 git clone https://github.com/harystyleseze/confidential-fhevm-skill.git
 mkdir -p .claude/skills
 cp -R confidential-fhevm-skill/skills/confidential-fhevm .claude/skills/
-# now prompt Claude Code: "Write me a confidential voting contract using FHEVM"
 ```
 
+Claude Code discovers skills under `.claude/skills/` automatically on the next session start. Verify with `/skills` inside Claude Code — `confidential-fhevm` should appear in the list.
+
 ### Cursor
+
 ```bash
+git clone https://github.com/harystyleseze/confidential-fhevm-skill.git
 mkdir -p .cursor/rules
 cp confidential-fhevm-skill/adapters/cursor/.cursor/rules/fhevm.mdc .cursor/rules/
 ```
 
+The rule's `globs` field is configured to auto-attach when you're editing `contracts/**/*.sol`, `packages/foundry/**/*.sol`, `test/**/*.ts`, `packages/nextjs/**/*.{ts,tsx}`, `hardhat.config.{ts,js}`, or `foundry.toml`. No manual activation needed.
+
 ### Windsurf
+
 ```bash
+git clone https://github.com/harystyleseze/confidential-fhevm-skill.git
 mkdir -p .windsurf/rules
 cp confidential-fhevm-skill/adapters/windsurf/.windsurf/rules/fhevm.md .windsurf/rules/
 ```
 
-### As a dev dep (registers `npx fhevm-lint`)
+The rule is set to `trigger: model_decision`, so Cascade pulls it in whenever the conversation touches FHEVM topics.
+
+### As a dev dependency (gives you `npx fhevm-lint`)
+
+If you want the linter on its own — for CI, pre-commit hooks, or invocation from a generated dApp — install the repository as a dev dependency. Use the package manager that matches your project; mixing managers inside a pnpm workspace produces broken bin symlinks.
+
 ```bash
-# pnpm workspace (fhevm-react-template) — from the workspace root
+# pnpm workspace (e.g. fhevm-react-template) — install from the workspace ROOT
 pnpm add -w --save-dev github:harystyleseze/confidential-fhevm-skill
 
-# standalone npm/yarn project
+# standalone npm project
 npm install --save-dev github:harystyleseze/confidential-fhevm-skill
+
+# standalone yarn project
+yarn add --dev github:harystyleseze/confidential-fhevm-skill
 ```
 
----
+`npx fhevm-lint contracts/` will now run anywhere within that project.
 
-## The validator (this is the differentiator)
+## Quick start — your first confidential dApp
 
-Documentation tells an agent *what to do*. The validator stops it from shipping when it doesn't.
+This walkthrough takes about ten minutes on a machine that already has Node ≥ 20, pnpm, Foundry (`forge` / `anvil` / `cast`), `jq`, and MetaMask.
+
+### 1. Scaffold a project
+
+```bash
+git clone https://github.com/zama-ai/fhevm-react-template.git my-dapp
+cd my-dapp
+pnpm install
+pnpm contracts:install        # forge soldeer install — required before `pnpm chain`
+```
+
+### 2. Drop the skill in
+
+```bash
+git clone https://github.com/harystyleseze/confidential-fhevm-skill.git ../skill-source
+mkdir -p .claude/skills
+cp -R ../skill-source/skills/confidential-fhevm .claude/skills/
+
+# And install the linter as a workspace dev dep
+pnpm add -w --save-dev github:harystyleseze/confidential-fhevm-skill
+```
+
+### 3. Replace `next.config.ts`
+
+The template's default config will hit a `WagmiProviderNotFoundError` during dev because of two webpack module-resolution warnings that Next 15 escalates to errors. Copy the skill's drop-in replacement, which adds the four mitigations:
+
+```bash
+cp .claude/skills/confidential-fhevm/templates/sdk-v3/next.config.ts packages/nextjs/next.config.ts
+```
+
+### 4. Prompt the agent
+
+Open Claude Code (or Cursor / Windsurf) in this directory and ask it to build something. For example:
+
+> Write me a confidential voting contract using FHEVM. Members vote yes or no with encrypted weights, and the tally is publicly revealed after the deadline.
+
+With the skill loaded, the agent produces eight things:
+
+1. `packages/foundry/src/<Name>.sol` — the contract.
+2. `packages/foundry/test/<Name>.t.sol` — a forge-fhevm test suite (uses cleartext-mode helpers like `encryptUint64`, `buildDecryptionProof`).
+3. `packages/foundry/script/Deploy<Name>.s.sol` plus a patch to both `scripts/deploy-localhost.sh` and `scripts/deploy-sepolia.sh`.
+4. `packages/nextjs/hooks/<feature>/use<Name>.tsx` — a wagmi + SDK v3 hook.
+5. `packages/nextjs/app/page.tsx` — the dApp as the home route (not buried at a sub-path).
+6. A `.env.example` at the repo root listing the env vars needed for Sepolia.
+7. A `## Live demo` placeholder block in the project's README.
+8. A lint pass: `npx fhevm-lint` reports zero CRITICAL or HIGH findings before the agent returns.
+
+### 5. Build and test locally
+
+```bash
+# Compile
+pnpm contracts:build
+
+# Run the generated forge test suite in cleartext mode (no relayer needed)
+pnpm contracts:test
+
+# Run the static linter — should report 0 findings
+npx fhevm-lint packages/foundry/src/ packages/nextjs/
+
+# Build the frontend
+pnpm next:build
+```
+
+### 6. Deploy locally and click around
+
+In three terminals:
+
+```bash
+# Terminal 1 — anvil + the FHEVM cleartext host + the default FHECounter
+pnpm chain
+
+# Terminal 2 — deploy your contract (and any others wired into the script)
+pnpm deploy:localhost
+
+# Terminal 3 — Next.js dev server
+pnpm start
+```
+
+Open `http://localhost:3000`, connect MetaMask to the local network (RPC `http://127.0.0.1:8545`, chain id 31337), and interact with the dApp. The home route is the new feature you built; the page surfaces a lifecycle stepper, a role-aware empty state (admin / member / spectator), and a copy-on-click anvil dev key so you can become the deployer wallet in one step if you're testing.
+
+### 7. (Optional) Deploy to Sepolia
+
+```bash
+cp .env.example .env.local      # fill in SEPOLIA_RPC_URL, DEPLOYER_PRIVATE_KEY, ETHERSCAN_API_KEY
+pnpm deploy:sepolia
+```
+
+[`skills/confidential-fhevm/references/16-deployment-workflow.md`](skills/confidential-fhevm/references/16-deployment-workflow.md) walks through wallet creation, faucets, RPC choice, and the Etherscan V2 key for first-time deployers.
+
+## The linter
+
+`fhevm-lint` is a static analyser for FHEVM Solidity and frontend code. It runs on `.sol` / `.ts` / `.tsx` / `.js` / `.jsx` files and exits non-zero on CRITICAL or HIGH findings.
 
 ```bash
 $ npx fhevm-lint contracts/Vote.sol
 contracts/Vote.sol
   contracts/Vote.sol:42:9  [CRITICAL/AP-001]   function 'castVote' writes an encrypted handle to state but never calls FHE.allowThis(...)
       fix: Add `FHE.allowThis(stateVar);` after each encrypted state write so the contract can read its own state in subsequent transactions.
-      note: Heuristic check: verify all state-writing functions manually.
+      note: Heuristic check — verify all state-writing functions manually.
 
 Summary: 1 finding(s) — 1 CRITICAL, 0 HIGH, 0 MEDIUM, 0 LOW
 $ echo $?
 1
 ```
 
-The 20 rules (full table in [`skills/confidential-fhevm/scripts/README.md`](skills/confidential-fhevm/scripts/README.md)):
+It checks 20 rules across two layers:
 
-| Layer | Rules |
+| Layer | Codes | Examples |
+| --- | --- | --- |
+| Solidity (AST + regex) | AP-001 … AP-018 | missing `FHE.allowThis`, `if` / `require` on `ebool`, missing `ZamaEthereumConfig`, missing `FHE.fromExternal`, encrypted divisor, `FHE.encrypt*` inside loops, direct `FHE.decrypt` in production, deprecated `TFHE.*` namespace |
+| Frontend (regex) | AP-019 … AP-021 | SDK v2 hook imports, awaited fire-and-forget `mutate`, missing `NEXT_PUBLIC_ALCHEMY_API_KEY` |
+
+The full rule table with severities, heuristic boundaries, and fix examples is in [`skills/confidential-fhevm/scripts/README.md`](skills/confidential-fhevm/scripts/README.md). The complementary narrative catalogue (root cause + worked fix per pitfall) is in [`skills/confidential-fhevm/references/11-pitfall-catalog.md`](skills/confidential-fhevm/references/11-pitfall-catalog.md).
+
+Useful invocations:
+
+```bash
+npx fhevm-lint contracts/MyContract.sol           # single file
+npx fhevm-lint packages/foundry/src/              # whole directory
+npx fhevm-lint --info contracts/                  # include INFO-level heuristics (off by default)
+npx fhevm-lint --json contracts/ > findings.json  # machine-readable output for CI
+```
+
+## Documentation map
+
+The skill is structured as a router (`SKILL.md`) plus deep-dive references. Open the reference for the topic you're working on:
+
+| Topic | Reference |
 | --- | --- |
-| **Solidity — CRITICAL** | AP-001 (missing `allowThis`, including struct-member writes), AP-002 (`if`/`require` on `ebool`), AP-003 (missing `ZamaEthereumConfig`), AP-004 (missing `fromExternal`), AP-005 (encrypted `div`/`rem`) |
-| **Solidity — HIGH** | AP-006, AP-007, AP-008 (auto-suppressed when contract uses public decryption), AP-017 (`FHE.encrypt*` in loop) |
-| **Solidity — MEDIUM** | AP-010, AP-011, AP-012, AP-013 (deprecated `TFHE.*`), AP-014, AP-018 (direct `FHE.decrypt` in prod) |
-| **Solidity — LOW / INFO** | AP-015 (bytecodeHash), AP-016 (Solidity < 0.8.24), AP-009 (opt-in) |
-| **Frontend — HIGH / MEDIUM / LOW** | AP-019 (SDK v2 hook imports), AP-020 (awaited fire-and-forget `mutate`), AP-021 (missing `NEXT_PUBLIC_ALCHEMY_API_KEY`) |
+| FHEVM architecture, handles, ACL, async decryption | [`01-mental-model.md`](skills/confidential-fhevm/references/01-mental-model.md) |
+| Project setup (Hardhat track) | [`02-project-setup.md`](skills/confidential-fhevm/references/02-project-setup.md) |
+| Encrypted types, op matrix, gas tiers | [`03-type-system.md`](skills/confidential-fhevm/references/03-type-system.md) |
+| Encrypted input proofs, user / public decryption flows | [`04-encrypted-io.md`](skills/confidential-fhevm/references/04-encrypted-io.md) |
+| ACL lifecycle — `allow`, `allowThis`, `allowTransient`, `makePubliclyDecryptable` | [`05-permission-model.md`](skills/confidential-fhevm/references/05-permission-model.md) |
+| Writing contracts — pattern catalogue with worked snippets | [`06-writing-contracts.md`](skills/confidential-fhevm/references/06-writing-contracts.md) |
+| Testing with `@fhevm/hardhat-plugin` (mock mode) | [`07-testing-guide.md`](skills/confidential-fhevm/references/07-testing-guide.md) |
+| Deployment — `hardhat-deploy` and Foundry, Etherscan V2, Sourcify | [`08-deployment.md`](skills/confidential-fhevm/references/08-deployment.md) |
+| Frontend patterns (legacy SDK v2) | [`09-frontend-patterns.md`](skills/confidential-fhevm/references/09-frontend-patterns.md) |
+| ERC-7984 confidential tokens, wrap / unwrap | [`10-erc7984-confidential-tokens.md`](skills/confidential-fhevm/references/10-erc7984-confidential-tokens.md) |
+| Pitfall catalogue (23 entries with root cause + fix) | [`11-pitfall-catalog.md`](skills/confidential-fhevm/references/11-pitfall-catalog.md) |
+| Non-obvious production edge cases | [`12-production-edge-cases.md`](skills/confidential-fhevm/references/12-production-edge-cases.md) |
+| Foundry toolchain — `forge-fhevm`, soldeer, cleartext-mode KMS proofs | [`13-foundry-toolchain.md`](skills/confidential-fhevm/references/13-foundry-toolchain.md) |
+| `@zama-fhe/react-sdk` v3 hooks | [`14-sdk-v3-frontend.md`](skills/confidential-fhevm/references/14-sdk-v3-frontend.md) |
+| Operational failure catalogue (when setup or build breaks) | [`15-failure-modes.md`](skills/confidential-fhevm/references/15-failure-modes.md) |
+| Deployment workflow — env files, Sepolia, Vercel, post-deploy doc updates | [`16-deployment-workflow.md`](skills/confidential-fhevm/references/16-deployment-workflow.md) |
+| UX patterns — lifecycle stepper, role banners, local-dev onboarding | [`17-ux-patterns.md`](skills/confidential-fhevm/references/17-ux-patterns.md) |
 
-The validation hook is wired into the SKILL.md "output contract": the agent must run `npx fhevm-lint` on every generated contract before responding. See [`skills/confidential-fhevm/scripts/README.md`](skills/confidential-fhevm/scripts/README.md).
+Four worked end-to-end examples live in [`skills/confidential-fhevm/examples/`](skills/confidential-fhevm/examples/). The Foundry-track [confidential voting example](skills/confidential-fhevm/examples/foundry/confidential-voting.md) reproduces the entire contract, test suite (17 cases including the full reveal happy path via `buildDecryptionProof`), deploy script patch, and frontend wiring inline — copy-paste straight into a fresh `fhevm-react-template`.
 
----
+## Choosing a toolchain
 
-## Coverage matrix (bounty topics)
+| | Foundry track | Hardhat track |
+| --- | --- | --- |
+| When to pick | Greenfield projects starting from `zama-ai/fhevm-react-template`. Recommended for new work. | Existing Hardhat repositories. Contract-only projects that don't ship a frontend. |
+| Test harness | `forge-fhevm` `FhevmTest` base class with `encryptUint64`, `decrypt`, `buildDecryptionProof` helpers | `@fhevm/hardhat-plugin` mock object — `fhevm.createEncryptedInput`, `fhevm.userDecryptEuint` |
+| Deploy | `forge script` invoked by `pnpm deploy:localhost` / `pnpm deploy:sepolia` shell wrappers; frontend ABIs auto-regenerated | `hardhat-deploy` TypeScript modules with `func.id` / `func.tags`; manual ABI copy into the frontend |
+| Frontend SDK | `@zama-fhe/sdk` 3.0.0 + `@zama-fhe/react-sdk` 3.0.0 (hooks: `useEncrypt`, `useUserDecrypt`, `usePublicDecrypt`, …) | Legacy `@zama-fhe/sdk` 2.x patterns (`Token` class) or the older `useFhevm` / `useFHEEncryption` / `useFHEDecrypt` hooks (deprecated; `fhevm-lint` AP-019 flags them) |
+| Local FHE runtime | `RelayerCleartext` against anvil + the real FHEVM host stack | JS-side mock in the Hardhat plugin |
+| End-to-end testability of `FHE.checkSignatures` | Yes, via `buildDecryptionProof` — the full public-reveal ceremony runs in unit tests | Sepolia-only — the mock doesn't expose an equivalent helper |
 
-The bounty (`/Users/mac/Downloads/zama-fhe/zama-bounty/challenge.md` lines 27–40) lists twelve required topics. Each one has a dedicated reference file:
+Solidity contracts are byte-identical between tracks. Only the surrounding tooling differs.
 
-| Required topic | Coverage |
-| --- | --- |
-| FHEVM architecture and how FHE works on-chain | [`SKILL.md` §1](skills/confidential-fhevm/SKILL.md), [`references/01-mental-model.md`](skills/confidential-fhevm/references/01-mental-model.md) |
-| Setting up the dev environment using the Hardhat template | [`references/02-project-setup.md`](skills/confidential-fhevm/references/02-project-setup.md), [`templates/hardhat.config.ts`](skills/confidential-fhevm/templates/hardhat.config.ts) |
-| Setting up with Foundry (the current canonical) | [`references/13-foundry-toolchain.md`](skills/confidential-fhevm/references/13-foundry-toolchain.md), [`templates/foundry/`](skills/confidential-fhevm/templates/foundry/) |
-| Encrypted types (`euint8`–`euint256`, `ebool`, `eaddress`) | [`references/03-type-system.md`](skills/confidential-fhevm/references/03-type-system.md) |
-| FHE operations (arithmetic, comparison, conditional logic) | [`references/06-writing-contracts.md`](skills/confidential-fhevm/references/06-writing-contracts.md) §§ 2–3 |
-| Access control (`FHE.allow`, `FHE.allowTransient`) | [`references/05-permission-model.md`](skills/confidential-fhevm/references/05-permission-model.md), [`SKILL.md` §4](skills/confidential-fhevm/SKILL.md) |
-| Input proofs — what / why / how | [`references/04-encrypted-io.md`](skills/confidential-fhevm/references/04-encrypted-io.md), [`references/06-writing-contracts.md`](skills/confidential-fhevm/references/06-writing-contracts.md) §1 |
-| User decryption (EIP-712 signing flow) | [`references/04-encrypted-io.md`](skills/confidential-fhevm/references/04-encrypted-io.md), [`references/14-sdk-v3-frontend.md`](skills/confidential-fhevm/references/14-sdk-v3-frontend.md) §3 |
-| Public decryption patterns | [`references/06-writing-contracts.md`](skills/confidential-fhevm/references/06-writing-contracts.md) §6, [`references/14-sdk-v3-frontend.md`](skills/confidential-fhevm/references/14-sdk-v3-frontend.md) §4, [`examples/foundry/confidential-voting.md`](skills/confidential-fhevm/examples/foundry/confidential-voting.md) |
-| Frontend integration with fhevmjs / Relayer SDK | [`references/14-sdk-v3-frontend.md`](skills/confidential-fhevm/references/14-sdk-v3-frontend.md) (v3, current), [`references/09-frontend-patterns.md`](skills/confidential-fhevm/references/09-frontend-patterns.md) (v2 legacy), [`templates/sdk-v3/`](skills/confidential-fhevm/templates/sdk-v3/) |
-| Testing FHEVM contracts | [`references/07-testing-guide.md`](skills/confidential-fhevm/references/07-testing-guide.md) (Hardhat mocks), [`references/13-foundry-toolchain.md`](skills/confidential-fhevm/references/13-foundry-toolchain.md) §§3–5 (Foundry + `buildDecryptionProof`) |
-| Common anti-patterns and mistakes | [`references/11-pitfall-catalog.md`](skills/confidential-fhevm/references/11-pitfall-catalog.md) (23 entries), [`scripts/fhevm-lint.js`](skills/confidential-fhevm/scripts/fhevm-lint.js) (20 enforced) |
-| OpenZeppelin Confidential Contracts / ERC-7984 | [`references/10-erc7984-confidential-tokens.md`](skills/confidential-fhevm/references/10-erc7984-confidential-tokens.md) |
-
----
-
-## Judging-criteria mapping
-
-| Criterion (from `challenge.md`) | Where it shows up |
-| --- | --- |
-| **Accuracy** — correct, working FHEVM code; up-to-date API | API verified against `@fhevm/solidity 0.11.1` source; Foundry-track templates use only current symbols (`FHE.*`, `ZamaEthereumConfig`, `FHE.fromExternal`, `buildDecryptionProof`); SDK v3 hooks (`useEncrypt`, `useUserDecrypt`, `usePublicDecrypt`); zero deprecated `TFHE.*` or v2-hook references. Verified end-to-end against a clean clone of the official `fhevm-react-template`. |
-| **Completeness** — full development workflow | SKILL.md sections 1–11; 15 numbered references covering writing, testing, deploying, and frontend integration on both tracks; 5+5+3 template files; 4 worked examples (3 Hardhat + 1 full Foundry) |
-| **Agent effectiveness** — prompt → working dApp | One-prompt build of a confidential voting dApp: 17/17 forge tests pass, frontend builds clean, contract deploys to local anvil, dApp serves `/vote` route at HTTP 200. The complete artefact is reproduced inline in [`examples/foundry/confidential-voting.md`](skills/confidential-fhevm/examples/foundry/confidential-voting.md). |
-| **Code quality** — clean, well-documented, best practice | Templates are real source files (not markdown wrappers); pass `fhevm-lint` clean; follow canonical Hardhat AND Foundry configs (Solidity 0.8.27, EVM `cancun`, optimizer 800 runs, `bytecodeHash: "none"`) |
-| **Structure** — clear separation of references / examples / templates | Anthropic-canonical layout: `SKILL.md` (router, 386 lines) + `references/` (15 numbered files) + `examples/` (4 worked dApps) + `templates/` (3 sub-folders: Hardhat, Foundry, SDK v3) + `scripts/` (linter + verify). Cross-tool adapters in `adapters/` |
-| **Error prevention** — avoids common pitfalls | `scripts/fhevm-lint.js` with 20 rules across Solidity AND frontend; `references/11-pitfall-catalog.md` with root cause + fix per pitfall (23 entries); `references/15-failure-modes.md` for operational gotchas; SKILL.md "validation hook" forces lint before agent response |
-
----
-
-## Live demo
-
-> Filled in after deploy.
-
-- **Sepolia contract:** _(deploy with `pnpm deploy:sepolia` and paste the address)_
-- **Live frontend:** _(deploy `packages/nextjs` to Vercel and paste the URL)_
-- **Walk-through video** (≤ 3:00, real-person pitch): _(YouTube unlisted)_
-
-The dApp generated by the skill during verification — every file reproduced verbatim — is in [`examples/foundry/confidential-voting.md`](skills/confidential-fhevm/examples/foundry/confidential-voting.md). Any judge can copy it into a fresh `fhevm-react-template` clone and run the same checks in a few minutes.
-
----
-
-## Repository layout
+## Project structure
 
 ```
 confidential-fhevm-skill/
-├── README.md                                    ← you are here
-├── LICENSE                                      ← MIT
-├── package.json                                 ← installs @solidity-parser/parser; declares fhevm-lint bin
+├── README.md                                       this file
+├── LICENSE                                         MIT
+├── package.json                                    declares the fhevm-lint bin
+├── adapters/
+│   ├── cursor/.cursor/rules/fhevm.mdc              Cursor rule (auto-attach via globs)
+│   └── windsurf/.windsurf/rules/fhevm.md           Windsurf rule (trigger: model_decision)
 ├── skills/
 │   └── confidential-fhevm/
-│       ├── SKILL.md                              ← 386-line router (dual-track, ≤ 500 ceiling)
-│       ├── references/                           ← 15 numbered deep-dive docs
-│       ├── examples/                             ← 4 worked dApps
-│       │   ├── private-dao-treasury.md           (Hardhat track)
-│       │   ├── sealed-bid-marketplace.md         (Hardhat track)
-│       │   ├── confidential-payroll.md           (Hardhat track)
-│       │   └── foundry/confidential-voting.md    (Foundry track — full end-to-end)
-│       ├── templates/                            ← Hardhat-track starter files
-│       │   ├── foundry/                          ← Foundry-track starter files
-│       │   └── sdk-v3/                           ← @zama-fhe/react-sdk v3 hook + page
-│       └── scripts/                              ← fhevm-lint.js (20 rules) + verify.sh + README.md
-├── adapters/
-│   ├── cursor/.cursor/rules/fhevm.mdc            ← Cursor format (Foundry + SDK v3 aware)
-│   └── windsurf/.windsurf/rules/fhevm.md         ← Windsurf format (same)
-└── tests/fixtures/                               ← 11 deliberately-broken files, one per AP rule code
+│       ├── SKILL.md                                router doc with the output contract
+│       ├── references/                             17 numbered topic docs
+│       ├── examples/
+│       │   ├── private-dao-treasury.md             Hardhat-track example
+│       │   ├── sealed-bid-marketplace.md           Hardhat-track example
+│       │   ├── confidential-payroll.md             Hardhat-track example
+│       │   └── foundry/confidential-voting.md      Foundry-track end-to-end example
+│       ├── templates/
+│       │   ├── contract.sol  test.ts  deploy.ts    Hardhat-track starters
+│       │   ├── page.tsx  hardhat.config.ts
+│       │   ├── foundry/                            Foundry-track starters + multi-contract deploy-sepolia.sh + .env.example
+│       │   └── sdk-v3/                             SDK v3 hook + page + next.config.ts with webpack mitigations
+│       └── scripts/
+│           ├── fhevm-lint.js                       the linter (20 rules)
+│           ├── verify.sh                           install + compile + test + lint smoke check
+│           └── README.md                           linter reference, install instructions, rule table
+└── tests/fixtures/                                 12 deliberately-broken files; one per rule code, exercised in CI
 ```
 
----
+## Verifying the skill yourself
 
-## Author
+If you want to confirm the linter is doing what the docs claim, clone the repository and run it against the fixtures:
 
-**Harystyles** — [GitHub](https://github.com/harystyleseze) · [X / Twitter](https://x.com/Harystylesdev) · Telegram `@DevHarystyles`
+```bash
+git clone https://github.com/harystyleseze/confidential-fhevm-skill.git
+cd confidential-fhevm-skill
+npm install                                      # only needs @solidity-parser/parser
 
-Built for the [Zama Developer Program — Mainnet Season 2](https://www.zama.org/post/zama-developer-program-mainnet-season-2-confidential-finance-is-the-next-frontier).
+# Clean templates — should exit 0 with no findings
+npx fhevm-lint skills/confidential-fhevm/templates/
+
+# Broken fixtures — should exit 1 with one finding per rule code
+npx fhevm-lint tests/fixtures/
+```
+
+## Contributing
+
+Issues and pull requests are welcome — particularly:
+
+- **New rules.** If you've hit an FHEVM mistake the linter doesn't catch, open an issue with a minimal repro. New rules go in [`skills/confidential-fhevm/scripts/fhevm-lint.js`](skills/confidential-fhevm/scripts/fhevm-lint.js) with a matching fixture under `tests/fixtures/AP0NN_<name>.sol` (or `.tsx` for frontend rules).
+- **New references.** If a topic in the skill is thin or out of date — `references/14-sdk-v3-frontend.md` will need updates as the SDK evolves, for example — file a PR with the corrected content.
+- **New worked examples.** Examples live in `skills/confidential-fhevm/examples/`. Each is a self-contained markdown file showing the full contract + tests + deploy + frontend; the Foundry-track [`confidential-voting.md`](skills/confidential-fhevm/examples/foundry/confidential-voting.md) is the canonical shape to mirror.
+
+Run `bash skills/confidential-fhevm/scripts/verify.sh` before submitting a PR; it installs, compiles, tests, and lints in one pass.
+
+## License
+
+[MIT](LICENSE).
