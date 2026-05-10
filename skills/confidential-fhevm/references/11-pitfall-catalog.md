@@ -1,6 +1,6 @@
 # 11 — FHEVM Pitfall Catalog
 
-Twenty-two pitfalls ordered by severity, then by toolchain. Each entry has root cause, what goes wrong, and how to fix it. The codes that `fhevm-lint` enforces mechanically (AP-001..AP-021) are referenced inline; the rest are documented for human reviewers.
+Twenty-three pitfalls ordered by severity, then by toolchain. Each entry has root cause, what goes wrong, and how to fix it. The codes that `fhevm-lint` enforces mechanically (AP-001..AP-021) are referenced inline; the rest are documented for human reviewers.
 
 ---
 
@@ -474,3 +474,48 @@ pnpm add -w --save-dev github:harystyleseze/confidential-fhevm-skill
 Or filter into a specific package: `pnpm --filter ./packages/foundry add --save-dev <pkg>`.
 
 Lint: not detected by `fhevm-lint` (it's a tooling-layer issue, not a code issue). `references/15-failure-modes.md` §1 has the symptom and fix.
+
+---
+
+### 23. `WagmiProviderNotFoundError` on first page render — caused by webpack module-resolution warnings
+
+**Root cause**: The fhevm-react-template's `wagmiConnectors` list pulls in `metaMaskWallet` from `@rainbow-me/rainbowkit/wallets`, which transitively imports `@metamask/sdk`. The SDK references `@react-native-async-storage/async-storage` at the top of its bundle even though that module is React-Native-only and isn't installed in a Next.js project. Separately, `viem`'s `tempo` chain definition transitively imports `ox/_esm/tempo/internal/virtualMasterPool.js`, which webpack flags as "Critical dependency: the request of a dependency is an expression". In Next.js dev mode, both of these escalate from build warnings to compile errors → the route's React tree fails to mount → `WagmiProvider` never wraps the page → every `useAccount` / `useConfig` call throws `WagmiProviderNotFoundError`. The error message points at `app/page.tsx:18` but the bug is in webpack config.
+
+**What goes wrong**: `pnpm start` succeeds; visiting `/` returns a 500 with a stack trace blaming `useAccount`; the dev console shows the underlying "Module not found: Can't resolve '@react-native-async-storage/async-storage'" and "Critical dependency" warnings. New developers spend hours suspecting their providers tree.
+
+**Wrong (default `next.config.ts`):**
+```typescript
+webpack: config => {
+  config.externals.push("pino-pretty", "lokijs", "encoding");
+  return config;
+},
+```
+
+**Fixed (apply all four mitigations):**
+```typescript
+serverExternalPackages: ["@react-native-async-storage/async-storage"],
+webpack: config => {
+  config.externals.push("pino-pretty", "lokijs", "encoding");
+
+  // Client-bundle: alias the missing RN-only dep to `false` (resolve to empty).
+  config.resolve = config.resolve || {};
+  config.resolve.alias = {
+    ...(config.resolve.alias || {}),
+    "@react-native-async-storage/async-storage": false,
+  };
+
+  // Suppress only the dynamic-require warnings from ox/tempo and @metamask/sdk
+  // — these are non-fatal in production but Next dev escalates them to errors.
+  config.ignoreWarnings = [
+    ...(config.ignoreWarnings || []),
+    { module: /ox\/_esm\/tempo/ },
+    { module: /@metamask\/sdk/ },
+  ];
+
+  return config;
+},
+```
+
+The full config — drop-in replacement for `packages/nextjs/next.config.ts` — lives at `templates/sdk-v3/next.config.ts`.
+
+Lint: not detected by `fhevm-lint` (config issue, not source). Documented in `references/15-failure-modes.md` §7 with full symptom-to-fix walkthrough.

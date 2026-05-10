@@ -410,7 +410,7 @@ contract DeployConfidentialVoting is Script {
 }
 ```
 
-To wire this into `pnpm deploy:localhost`, append a second forge-script call to `scripts/deploy-localhost.sh` after the existing `FHECounter` deploy block:
+To wire this into `pnpm deploy:localhost` AND `pnpm deploy:sepolia` (item 3 of the SKILL.md output contract), append a second forge-script call to BOTH shell scripts after the existing `FHECounter` deploy block. Patch for `scripts/deploy-localhost.sh`:
 
 ```bash
 echo
@@ -430,6 +430,8 @@ grep -E "ConfidentialVoting|Admin|===" "$voting_log" || true
 ```
 
 The script's existing `pnpm generate` step then regenerates `packages/nextjs/contracts/ConfidentialVoting.{ts,local.ts}` automatically by walking `broadcast/`.
+
+For Sepolia, replace `scripts/deploy-sepolia.sh` with the multi-contract version at [`templates/foundry/deploy-sepolia.sh`](../../templates/foundry/deploy-sepolia.sh) and add a second `run_forge` line for `Deploy<Name>.s.sol`. The user must supply a `.env.local` at the repo root with `SEPOLIA_RPC_URL` and `DEPLOYER_PRIVATE_KEY` before running it — see [`16-deployment-workflow.md`](../../references/16-deployment-workflow.md) for the full pre-flight checklist.
 
 ---
 
@@ -458,7 +460,11 @@ await writeContractAsync({
 
 No manual EIP-712, no KMS plumbing, no handle re-encoding. `usePublicDecrypt` returns the relayer proof bound to `(handles, cleartexts)` ready for `FHE.checkSignatures`.
 
-## Frontend — `packages/nextjs/app/vote/page.tsx`
+## Frontend — `packages/nextjs/app/page.tsx` (the home route)
+
+The voting dApp **is** the home page. Replace `packages/nextjs/app/page.tsx` with the voting page so visiting `http://localhost:3000` lands directly on the vote form (not the default `FHECounter` demo). This is item 5 of the SKILL.md output contract.
+
+If the user explicitly wants to keep the existing counter demo, leave a prominent first-viewport card on `/` linking to `/vote`. A bare sub-route with no home-page entry is a contract violation.
 
 The page renders three states keyed off `(votingOpen, votingClosed, finalized)`:
 - **Pre-deadline** — vote form with YES/NO toggle, weight input, submit button.

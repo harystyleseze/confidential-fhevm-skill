@@ -2,6 +2,8 @@
 
 > Open this when the project ships `@zama-fhe/sdk` v3 / `@zama-fhe/react-sdk` v3 — the SDK shipped with the official `fhevm-react-template`. For the older `@zama-fhe/sdk` v2 / `@zama-fhe/relayer-sdk` 0.4.x patterns, see `references/09-frontend-patterns.md`.
 
+> **Day-zero gotcha — read this first.** A fresh `fhevm-react-template` clone often greets you with `WagmiProviderNotFoundError: useConfig must be used within WagmiProvider` on the first page render. The providers tree IS correct; the underlying cause is webpack module-resolution warnings (`@react-native-async-storage/async-storage` from `@metamask/sdk`, plus `ox/_esm/tempo` dynamic-require) that Next.js dev mode escalates to compile errors. **Fix the `next.config.ts` first** — replace it with `templates/sdk-v3/next.config.ts` (or apply the four mitigations documented in `references/11-pitfall-catalog.md` pitfall #23). Then start writing hooks.
+
 ## Contents
 1. Mental model of v3
 2. Encrypting inputs (`useEncrypt`)

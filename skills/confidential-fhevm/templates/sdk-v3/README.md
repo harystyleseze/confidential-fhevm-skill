@@ -6,6 +6,7 @@ For projects using `@zama-fhe/sdk` v3 and `@zama-fhe/react-sdk` v3 — the curre
 | --- | --- |
 | [`useFHEContract.tsx`](useFHEContract.tsx) | `packages/nextjs/hooks/<feature>/useMyContract.tsx` |
 | [`page.tsx`](page.tsx) | `packages/nextjs/app/<route>/page.tsx` |
+| [`next.config.ts`](next.config.ts) | `packages/nextjs/next.config.ts` *(replace the template default — the four mitigations inside are required for a clean dev start; see comment block at the top of the file)* |
 
 ## Why SDK v3 instead of v2?
 

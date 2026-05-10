@@ -329,22 +329,27 @@ Deeper: [`scripts/README.md`](scripts/README.md), [`references/11-pitfall-catalo
 
 ## 10. Output Contract — what every response must include
 
-When asked to build a contract, the response must include all five. Skip none. Adapt the paths and file extensions to the project's track.
+When asked to build a contract, the response must include all seven items below. Skip none. Adapt the paths and file extensions to the project's track.
 
 | # | Foundry track | Hardhat track |
 | --- | --- | --- |
 | 1. Contract | `packages/foundry/src/<Name>.sol` | `contracts/<Name>.sol` |
 | 2. Test | `packages/foundry/test/<Name>.t.sol` (inherits `FhevmTest`) | `test/<Name>.test.ts` (uses `fhevm.createEncryptedInput` mock) |
-| 3. Deploy | `packages/foundry/script/Deploy<Name>.s.sol` + a line in `scripts/deploy-localhost.sh` | `deploy/01_<name>.ts` (hardhat-deploy with `func.id` + `func.tags`) |
+| 3. Deploy script | `packages/foundry/script/Deploy<Name>.s.sol` + a `run_forge` line in BOTH `scripts/deploy-localhost.sh` AND `scripts/deploy-sepolia.sh` | `deploy/01_<name>.ts` (hardhat-deploy with `func.id` + `func.tags`) |
 | 4. Frontend hook | `packages/nextjs/hooks/<feature>/use<Name>.tsx` (SDK v3) | bespoke hook using SDK v2 patterns |
-| 5. Frontend page | `packages/nextjs/app/<route>/page.tsx` — encrypts, submits, reads handle, decrypts on demand, three render states (form / reveal / finalised where applicable) | same |
+| 5. Frontend page | `packages/nextjs/app/page.tsx` — the new dApp **is the home route**. Encrypts, submits, reads handle, decrypts on demand, three render states (form / reveal / finalised where applicable). | same |
+| 6. Home-route wiring | `app/page.tsx` is REPLACED with the new feature page (preferred default). If the user explicitly asks to keep the existing demo, use a prominent first-viewport card on `/` that links to the feature route. **A bare sub-route with no home-page entry is a contract violation** — judges who open `localhost:3000` must land on the new dApp without clicking. | same |
+| 7. Deploy artifacts | `.env.example` at repo root listing `SEPOLIA_RPC_URL`, `DEPLOYER_PRIVATE_KEY`, optional `ETHERSCAN_API_KEY`; `## Live demo` placeholder block in the project README; `next.config.ts` mitigations from [`templates/sdk-v3/next.config.ts`](templates/sdk-v3/next.config.ts) (prevents the `WagmiProviderNotFoundError` documented as pitfall #23) | adapt to Hardhat networks block |
 
 In all cases:
 - Test covers happy path + at least one branch of every `FHE.select` + a permission test (a non-permitted address fails to decrypt) + an uninitialised-handle test.
 - The frontend uses `mutateAsync` (never `mutate`) when awaiting an SDK v3 hook.
 - `npx fhevm-lint` over both `packages/foundry/src/` (or `contracts/`) AND `packages/nextjs/` returns 0 CRITICAL/HIGH findings.
+- The agent never invents secrets. When `SEPOLIA_RPC_URL` / `DEPLOYER_PRIVATE_KEY` / `NEXT_PUBLIC_ALCHEMY_API_KEY` are missing, the agent prints the exact checklist from [`references/16-deployment-workflow.md`](references/16-deployment-workflow.md) §7 and stops until the user fills `.env.local`. If the user is a first-time builder (asks "what's a deployer wallet?" or similar), the agent walks them through §0 — wallet creation, faucet, RPC choice, Etherscan key — rather than expecting them to know.
 
 If any step fails compile, test, or lint, fix and re-emit. Do not return half-done work.
+
+The full deployment workflow (env-file pre-flight, Sepolia run, Vercel push, post-deploy doc updates) lives in [`references/16-deployment-workflow.md`](references/16-deployment-workflow.md). Templates for the deploy script and `.env.example` live in [`templates/foundry/deploy-sepolia.sh`](templates/foundry/deploy-sepolia.sh) and [`templates/foundry/.env.example`](templates/foundry/.env.example).
 
 ---
 
@@ -360,12 +365,13 @@ If any step fails compile, test, or lint, fix and re-emit. Do not return half-do
 - [`11-pitfall-catalog.md`](references/11-pitfall-catalog.md) — pitfalls with root cause + fix (open when something breaks)
 - [`12-production-edge-cases.md`](references/12-production-edge-cases.md) — non-obvious gotchas (open when polishing for prod)
 - [`15-failure-modes.md`](references/15-failure-modes.md) — operational failure catalog (open when setup or build breaks)
+- [`16-deployment-workflow.md`](references/16-deployment-workflow.md) — env-file pre-flight, Sepolia + Vercel deploy, post-deploy doc update (open when shipping)
 
 ### Foundry / SDK v3 track (current canonical)
 - [`13-foundry-toolchain.md`](references/13-foundry-toolchain.md) — forge-fhevm, soldeer, cleartext-mode KMS proofs (open when on the Foundry track)
 - [`14-sdk-v3-frontend.md`](references/14-sdk-v3-frontend.md) — @zama-fhe/react-sdk v3 hooks (open when building the frontend)
-- [`templates/foundry/`](templates/foundry/) — real source files: `contract.sol`, `Test.t.sol`, `Deploy.s.sol`, `foundry.toml`
-- [`templates/sdk-v3/`](templates/sdk-v3/) — real source files: `useFHEContract.tsx`, `page.tsx`
+- [`templates/foundry/`](templates/foundry/) — real source files: `contract.sol`, `Test.t.sol`, `Deploy.s.sol`, `foundry.toml`, `deploy-sepolia.sh` (multi-contract), `.env.example`
+- [`templates/sdk-v3/`](templates/sdk-v3/) — real source files: `useFHEContract.tsx`, `page.tsx`, `next.config.ts` (with the four webpack mitigations)
 - [`examples/foundry/confidential-voting.md`](examples/foundry/confidential-voting.md) — full end-to-end worked example
 
 ### Hardhat / SDK v2 track (legacy, still supported)

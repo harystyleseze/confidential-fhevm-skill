@@ -46,12 +46,16 @@ Contract Solidity API is identical between tracks; only tests, deploys, frontend
 - For ERC-7984: use `useShield` / `useUnshield` / `useConfidentialBalance` / `useConfidentialTransfer`.
 
 ## Output contract
-Every "build me a confidential X" prompt produces all five:
+Every "build me a confidential X" prompt produces all seven:
 1. Contract — `packages/foundry/src/<Name>.sol` (Foundry) or `contracts/<Name>.sol` (Hardhat)
 2. Test — `packages/foundry/test/<Name>.t.sol` (FhevmTest) or `test/<Name>.test.ts` (mock)
-3. Deploy — `Deploy<Name>.s.sol` + a line in `scripts/deploy-localhost.sh` (Foundry) or `deploy/01_<name>.ts` (Hardhat)
-4. Frontend hook + page — `packages/nextjs/hooks/<feature>/use<Name>.tsx` + `packages/nextjs/app/<route>/page.tsx`
-5. Lint clean — `npx fhevm-lint packages/foundry/src/ packages/nextjs/` returns 0 CRITICAL/HIGH
+3. Deploy script — `Deploy<Name>.s.sol` + `run_forge` lines in BOTH `scripts/deploy-localhost.sh` AND `scripts/deploy-sepolia.sh` (Foundry); or `deploy/01_<name>.ts` (Hardhat)
+4. Frontend hook + page — `packages/nextjs/hooks/<feature>/use<Name>.tsx` + `packages/nextjs/app/page.tsx` (the new dApp IS the home route — replace `app/page.tsx`)
+5. Home-route wiring — visiting `localhost:3000` must show the new dApp, not the default counter; bare sub-routes are a contract violation
+6. Deploy artifacts — `.env.example` (`SEPOLIA_RPC_URL`, `DEPLOYER_PRIVATE_KEY`, optional `ETHERSCAN_API_KEY`) + `## Live demo` placeholder in README + `next.config.ts` mitigations from `templates/sdk-v3/next.config.ts`
+7. Lint clean — `npx fhevm-lint packages/foundry/src/ packages/nextjs/` returns 0 CRITICAL/HIGH
+
+Never invent secrets. When env vars are missing, ask the user to fill `.env.local`, then proceed.
 
 ## Validation hook
 Before responding with code:
@@ -65,6 +69,7 @@ Fix every CRITICAL and HIGH finding before returning.
 - `skills/confidential-fhevm/references/13-foundry-toolchain.md`
 - `skills/confidential-fhevm/references/14-sdk-v3-frontend.md`
 - `skills/confidential-fhevm/references/15-failure-modes.md`
+- `skills/confidential-fhevm/references/16-deployment-workflow.md`
 - `skills/confidential-fhevm/references/06-writing-contracts.md`
 - `skills/confidential-fhevm/references/05-permission-model.md`
 - `skills/confidential-fhevm/references/11-pitfall-catalog.md`

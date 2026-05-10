@@ -135,7 +135,7 @@ The bounty (`/Users/mac/Downloads/zama-fhe/zama-bounty/challenge.md` lines 27–
 | Public decryption patterns | [`references/06-writing-contracts.md`](skills/confidential-fhevm/references/06-writing-contracts.md) §6, [`references/14-sdk-v3-frontend.md`](skills/confidential-fhevm/references/14-sdk-v3-frontend.md) §4, [`examples/foundry/confidential-voting.md`](skills/confidential-fhevm/examples/foundry/confidential-voting.md) |
 | Frontend integration with fhevmjs / Relayer SDK | [`references/14-sdk-v3-frontend.md`](skills/confidential-fhevm/references/14-sdk-v3-frontend.md) (v3, current), [`references/09-frontend-patterns.md`](skills/confidential-fhevm/references/09-frontend-patterns.md) (v2 legacy), [`templates/sdk-v3/`](skills/confidential-fhevm/templates/sdk-v3/) |
 | Testing FHEVM contracts | [`references/07-testing-guide.md`](skills/confidential-fhevm/references/07-testing-guide.md) (Hardhat mocks), [`references/13-foundry-toolchain.md`](skills/confidential-fhevm/references/13-foundry-toolchain.md) §§3–5 (Foundry + `buildDecryptionProof`) |
-| Common anti-patterns and mistakes | [`references/11-pitfall-catalog.md`](skills/confidential-fhevm/references/11-pitfall-catalog.md) (22 entries), [`scripts/fhevm-lint.js`](skills/confidential-fhevm/scripts/fhevm-lint.js) (20 enforced) |
+| Common anti-patterns and mistakes | [`references/11-pitfall-catalog.md`](skills/confidential-fhevm/references/11-pitfall-catalog.md) (23 entries), [`scripts/fhevm-lint.js`](skills/confidential-fhevm/scripts/fhevm-lint.js) (20 enforced) |
 | OpenZeppelin Confidential Contracts / ERC-7984 | [`references/10-erc7984-confidential-tokens.md`](skills/confidential-fhevm/references/10-erc7984-confidential-tokens.md) |
 
 ---
@@ -149,7 +149,7 @@ The bounty (`/Users/mac/Downloads/zama-fhe/zama-bounty/challenge.md` lines 27–
 | **Agent effectiveness** — prompt → working dApp | One-prompt build of a confidential voting dApp: 17/17 forge tests pass, frontend builds clean, contract deploys to local anvil, dApp serves `/vote` route at HTTP 200. The complete artefact is reproduced inline in [`examples/foundry/confidential-voting.md`](skills/confidential-fhevm/examples/foundry/confidential-voting.md). |
 | **Code quality** — clean, well-documented, best practice | Templates are real source files (not markdown wrappers); pass `fhevm-lint` clean; follow canonical Hardhat AND Foundry configs (Solidity 0.8.27, EVM `cancun`, optimizer 800 runs, `bytecodeHash: "none"`) |
 | **Structure** — clear separation of references / examples / templates | Anthropic-canonical layout: `SKILL.md` (router, 386 lines) + `references/` (15 numbered files) + `examples/` (4 worked dApps) + `templates/` (3 sub-folders: Hardhat, Foundry, SDK v3) + `scripts/` (linter + verify). Cross-tool adapters in `adapters/` |
-| **Error prevention** — avoids common pitfalls | `scripts/fhevm-lint.js` with 20 rules across Solidity AND frontend; `references/11-pitfall-catalog.md` with root cause + fix per pitfall (22 entries); `references/15-failure-modes.md` for operational gotchas; SKILL.md "validation hook" forces lint before agent response |
+| **Error prevention** — avoids common pitfalls | `scripts/fhevm-lint.js` with 20 rules across Solidity AND frontend; `references/11-pitfall-catalog.md` with root cause + fix per pitfall (23 entries); `references/15-failure-modes.md` for operational gotchas; SKILL.md "validation hook" forces lint before agent response |
 
 ---
 

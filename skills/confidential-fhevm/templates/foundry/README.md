@@ -1,6 +1,6 @@
 # Foundry-track templates
 
-Use these when working from Zama's official `fhevm-react-template` (the canonical full-stack scaffold today). All four files are real source files, not markdown wrappers — drop them straight into a freshly-cloned template.
+Use these when working from Zama's official `fhevm-react-template` (the canonical full-stack scaffold today). All files are real source files, not markdown wrappers — drop them straight into a freshly-cloned template.
 
 | File | Drop into |
 | --- | --- |
@@ -8,6 +8,8 @@ Use these when working from Zama's official `fhevm-react-template` (the canonica
 | [`Test.t.sol`](Test.t.sol) | `packages/foundry/test/MyContractTest.t.sol` |
 | [`Deploy.s.sol`](Deploy.s.sol) | `packages/foundry/script/DeployMyContract.s.sol` |
 | [`foundry.toml`](foundry.toml) | `packages/foundry/foundry.toml` *(reference; template already ships an equivalent)* |
+| [`deploy-sepolia.sh`](deploy-sepolia.sh) | `scripts/deploy-sepolia.sh` *(replace template default — adds `run_forge` helper for multi-contract deploys; rename `<Name>` placeholders)* |
+| [`.env.example`](.env.example) | `<repo-root>/.env.example` *(consumed by `deploy-sepolia.sh`)* |
 
 ## Quick start (zero-to-deployed in ≈3 minutes)
 

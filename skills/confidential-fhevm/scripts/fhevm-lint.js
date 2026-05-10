@@ -177,10 +177,23 @@ function analyseContract(contract, source, filePath, findings) {
 
   const baseNames = contract.baseContracts.map((b) => b.baseName.namePath);
   const inheritsFheConfig = baseNames.some((n) => FHE_CONFIG_BASES.has(n));
-  const usesFhe = source.includes("@fhevm/solidity") || /\bFHE\./.test(source);
 
-  // AP-003: contract uses FHE but doesn't inherit ZamaEthereumConfig
-  if (usesFhe && !inheritsFheConfig && contract.kind === "contract") {
+  // AP-003 must not fire on test contracts. Test contracts inherit `FhevmTest`
+  // (forge-fhevm) and deploy production contracts (which DO inherit
+  // ZamaEthereumConfig). The host stack lives in FhevmTest itself.
+  const TEST_BASES = new Set(["FhevmTest", "Test"]); // forge-std Test + forge-fhevm FhevmTest
+  const isTestContract =
+    /\.t\.sol$/.test(filePath) ||
+    /Test$/.test(contract.name) ||
+    baseNames.some((n) => TEST_BASES.has(n));
+
+  // AP-003 detection uses the *stripped* source so comments mentioning `FHE.`
+  // (e.g. helper docstrings in test templates) don't false-positive.
+  const cleaned = stripComments(source);
+  const usesFhe = cleaned.includes("@fhevm/solidity") || /\bFHE\./.test(cleaned);
+
+  // AP-003: contract uses FHE but doesn't inherit ZamaEthereumConfig.
+  if (usesFhe && !inheritsFheConfig && contract.kind === "contract" && !isTestContract) {
     findings.push({
       file: filePath,
       line: contract.loc.start.line,

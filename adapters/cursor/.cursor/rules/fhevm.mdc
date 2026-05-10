@@ -49,12 +49,16 @@ Contract Solidity API is **identical** between tracks. Tests, deploy scripts, an
 - For ERC-7984 token flows use the dedicated hooks: `useShield`, `useUnshield`, `useConfidentialBalance`, `useConfidentialTransfer`.
 
 ## Output contract
-When asked to build a contract, produce all five:
+When asked to build a confidential X, produce all seven:
 1. Contract — `packages/foundry/src/<Name>.sol` (Foundry) or `contracts/<Name>.sol` (Hardhat)
 2. Test — `packages/foundry/test/<Name>.t.sol` (FhevmTest) or `test/<Name>.test.ts` (mock)
-3. Deploy — `packages/foundry/script/Deploy<Name>.s.sol` + a line in `scripts/deploy-localhost.sh` (Foundry) or `deploy/01_<name>.ts` (Hardhat)
-4. Frontend hook + page — `packages/nextjs/hooks/<feature>/use<Name>.tsx` + `packages/nextjs/app/<route>/page.tsx`
-5. Lint clean — `npx fhevm-lint packages/foundry/src/ packages/nextjs/` returns 0 CRITICAL/HIGH findings
+3. Deploy script — `packages/foundry/script/Deploy<Name>.s.sol` + `run_forge` lines in BOTH `scripts/deploy-localhost.sh` AND `scripts/deploy-sepolia.sh` (Foundry); or `deploy/01_<name>.ts` (Hardhat)
+4. Frontend hook + page — `packages/nextjs/hooks/<feature>/use<Name>.tsx` + `packages/nextjs/app/page.tsx` (the new dApp IS the home route — replacing `app/page.tsx` is the preferred default)
+5. Home-route wiring — judges who open `localhost:3000` must land on the new dApp without clicking; a bare sub-route is a contract violation
+6. Deploy artifacts — `.env.example` at repo root (`SEPOLIA_RPC_URL`, `DEPLOYER_PRIVATE_KEY`, optional `ETHERSCAN_API_KEY`) + `## Live demo` placeholder in README + `next.config.ts` from `templates/sdk-v3/next.config.ts`
+7. Lint clean — `npx fhevm-lint packages/foundry/src/ packages/nextjs/` returns 0 CRITICAL/HIGH findings
+
+Never invent secrets. When env vars are missing, ask the user to fill `.env.local`, then proceed.
 
 ## Validation hook
 Before responding with code, run the linter:
@@ -68,9 +72,10 @@ Fix every CRITICAL and HIGH finding before returning.
 - `skills/confidential-fhevm/references/13-foundry-toolchain.md` — Foundry + forge-fhevm
 - `skills/confidential-fhevm/references/14-sdk-v3-frontend.md` — @zama-fhe/react-sdk v3
 - `skills/confidential-fhevm/references/15-failure-modes.md` — operational gotchas
+- `skills/confidential-fhevm/references/16-deployment-workflow.md` — env-file pre-flight, Sepolia + Vercel deploy, post-deploy doc updates
 - `skills/confidential-fhevm/references/06-writing-contracts.md` — track-agnostic Solidity patterns
 - `skills/confidential-fhevm/references/05-permission-model.md` — ACL lifecycle
-- `skills/confidential-fhevm/references/11-pitfall-catalog.md` — 22 anti-patterns with worked fixes
+- `skills/confidential-fhevm/references/11-pitfall-catalog.md` — 23 anti-patterns with worked fixes
 - `skills/confidential-fhevm/references/10-erc7984-confidential-tokens.md` — confidential token spec
 - `skills/confidential-fhevm/templates/foundry/` — Foundry-track starter files
 - `skills/confidential-fhevm/templates/sdk-v3/` — SDK v3 hook + page templates

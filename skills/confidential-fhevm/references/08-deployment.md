@@ -1,6 +1,6 @@
 # 08 — Deployment
 
-> Open when deploying to local, Sepolia testnet, or mainnet.
+> Open when deploying to local, Sepolia testnet, or mainnet. For the **complete agent workflow** (env-file pre-flight, post-deploy doc updates, Vercel push), open [`16-deployment-workflow.md`](16-deployment-workflow.md) — this file covers the mechanics, that one covers the agent's responsibilities end-to-end.
 
 This document covers both tracks. The Foundry track is dominant for full-stack projects today (see §1); the Hardhat track (§2 onward) is documented for contract-only / legacy projects.
 

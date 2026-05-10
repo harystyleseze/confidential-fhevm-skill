@@ -87,6 +87,30 @@
 **Cause:** Etherscan V2 (May 2025+) requires a single API key under `etherscan.apiKey` (not per-network). Older configs with `apiKey: { sepolia: ... }` are deprecated.
 **Fix:** `etherscan: { apiKey: vars.get("ETHERSCAN_API_KEY", "") }` (Hardhat) or `[etherscan] sepolia = { key = "${ETHERSCAN_API_KEY}" }` (Foundry — same key string, no per-network object). Add `sourcify: { enabled: true }` as a fallback verifier.
 
+### `error: invalid private key (length)` from forge
+**Cause:** The `DEPLOYER_PRIVATE_KEY` is missing the `0x` prefix, or has trailing whitespace from a paste.
+**Fix:** Open `.env.local`, ensure the value starts with `0x` and has no quotes around it (e.g. `DEPLOYER_PRIVATE_KEY=0xabc...`, not `DEPLOYER_PRIVATE_KEY="0xabc..."`). 64 hex chars after the `0x`. If MetaMask gave you a 64-char string with no `0x`, prepend it manually.
+
+### `error: insufficient funds for gas * price + value` from forge
+**Cause:** The deployer address has less Sepolia ETH than the script needs to deploy + verify. FHEVM contracts are gas-heavy (~2–4M gas per contract); 0.01 ETH is usually NOT enough.
+**Fix:** Top up via faucet (see `references/16-deployment-workflow.md` §0.2) until the deployer has ≥0.05 Sepolia ETH. The exact address is the public counterpart of `DEPLOYER_PRIVATE_KEY`; if unsure, run `cast wallet address --private-key $DEPLOYER_PRIVATE_KEY` (Foundry) before requesting more.
+
+### Faucet refuses my deployer address with "looks unused on mainnet"
+**Cause:** Anti-abuse heuristic on some faucets (Alchemy, Infura, Paradigm) — they decline addresses with no on-chain history because bots harvest faucet drips with fresh keys.
+**Fix:** Try a different faucet (Google Cloud's accepts most addresses; PoW faucets like `sepolia-faucet.pk910.de` accept anyone but take 5–10 min). Alternatively, send a tiny mainnet tx (≥0.001 ETH) from the same address to "season" it, then retry the faucet.
+
+### MetaMask doesn't show Sepolia in the network dropdown
+**Cause:** Older MetaMask versions hide testnets by default.
+**Fix:** Settings → **Advanced** → toggle "Show test networks" on. Sepolia appears in the network picker.
+
+### `pnpm vercel:yolo` says "No projects found in current directory"
+**Cause:** `vercel` CLI hasn't been linked to a project yet, OR the user ran the command from the repo root instead of `packages/nextjs/`.
+**Fix:** `cd packages/nextjs && pnpm vercel:login`, then `pnpm vercel:yolo`. The first run prompts you to either link an existing Vercel project or create a new one.
+
+### Vercel build succeeds but the deployed app shows a blank page
+**Cause:** `NEXT_PUBLIC_ALCHEMY_API_KEY` is unset in the Vercel project's environment variables, so the wagmi runtime guard fires after hydration.
+**Fix:** Vercel dashboard → project → Settings → Environment Variables → add `NEXT_PUBLIC_ALCHEMY_API_KEY` for Production (and Preview if you want previews to work). Redeploy. The `.env.local` file in your repo is NOT used by Vercel — env vars must be set in the dashboard.
+
 ---
 
 ## 5. Frontend ABI generation
@@ -122,6 +146,10 @@
 ### Dev server starts but `curl http://localhost:3000/<route>` returns 000 / connection refused
 **Cause:** The dev server hasn't finished compiling the route yet; first request to a route triggers on-demand compilation.
 **Fix:** `until curl -sf http://localhost:3000/<route> > /dev/null; do sleep 2; done` then re-request, or check the dev-server log for "Compiled successfully".
+
+### `WagmiProviderNotFoundError: useConfig must be used within WagmiProvider` on first page render
+**Cause:** Webpack module-resolution warnings (specifically `Module not found: Can't resolve '@react-native-async-storage/async-storage'` from `@metamask/sdk` and `Critical dependency: the request of a dependency is an expression` from `ox/_esm/tempo/internal/virtualMasterPool.js`) escalate to compile errors in Next.js dev mode. The route's React tree fails to mount, `WagmiProvider` never wraps the page, and every wagmi hook (`useAccount`, `useConfig`, …) throws. The error message blames `useAccount` in `app/page.tsx`; the actual fix is in `next.config.ts`.
+**Fix:** Replace `packages/nextjs/next.config.ts` with the version at `templates/sdk-v3/next.config.ts` (or apply the four mitigations: `serverExternalPackages: ["@react-native-async-storage/async-storage"]`, alias the same module to `false` in `webpack.resolve.alias`, push the standard externals (`pino-pretty`, `lokijs`, `encoding`), and `ignoreWarnings` for `/ox\/_esm\/tempo/` and `/@metamask\/sdk/`). Then `rm -rf packages/nextjs/.next` and restart `pnpm start`. Pitfall AP-23 in `references/11-pitfall-catalog.md` has the full diff.
 
 ---
 
