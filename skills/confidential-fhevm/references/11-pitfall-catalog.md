@@ -1,6 +1,6 @@
-# FHEVM Pitfall Catalog
+# 11 — FHEVM Pitfall Catalog
 
-16 pitfalls ordered by severity. Each includes the root cause, what goes wrong, and how to fix it.
+Twenty-two pitfalls ordered by severity, then by toolchain. Each entry has root cause, what goes wrong, and how to fix it. The codes that `fhevm-lint` enforces mechanically (AP-001..AP-021) are referenced inline; the rest are documented for human reviewers.
 
 ---
 
@@ -358,3 +358,119 @@ function computeReward() external returns (euint64) {
 **What goes wrong**: Token amounts overflow in basic arithmetic (transfers, minting), silently wrapping to incorrect values.
 
 **Prevention**: Always set `decimals()` to return 6 or fewer. When wrapping an 18-decimal ERC-20, the wrapper uses a conversion rate of 10^12.
+
+---
+
+## Track-aware pitfalls
+
+These cover tooling-specific failure modes (Foundry vs. Hardhat, SDK v3 vs. v2). Each is enforced by `fhevm-lint` where mechanically detectable; the rest are documented in `references/15-failure-modes.md`.
+
+### 17. Single shared `bytes inputProof` for multiple ciphertexts breaks Foundry tests
+
+**Root cause**: `forge-fhevm`'s cleartext-mode helpers `encryptBool` / `encryptUint*` / `encryptAddress` each return a separate `(externalE*, bytes proof)` pair. There is no batched-input helper. If a contract function takes a single `bytes calldata inputProof` and passes it to multiple `FHE.fromExternal(...)` calls, the second call reverts with `InvalidInputHandle()` because its proof was never produced for that handle.
+
+**What goes wrong**: The contract compiles, the Hardhat mock test passes (because the JS mock batches all ciphertexts under one proof), but the Foundry test reverts immediately. Symptoms manifest only on the Foundry track.
+
+**Wrong:**
+```solidity
+function vote(
+    uint256 id,
+    externalEbool   isYes, externalEuint64 weight,
+    bytes calldata inputProof              // ❌ one proof, two ciphertexts
+) external { ... }
+```
+
+**Fixed:**
+```solidity
+function vote(
+    uint256 id,
+    externalEbool   isYes,  bytes calldata isYesProof,
+    externalEuint64 weight, bytes calldata weightProof   // ✅ one proof per ciphertext
+) external { ... }
+```
+
+**On the frontend (SDK v3):** call `encrypt.mutateAsync(...)` once per ciphertext; pass each result's `handles[0]` + `inputProof` independently. This is one extra round-trip per submission, in exchange for full Foundry testability. See `references/13-foundry-toolchain.md` §4.
+
+---
+
+### 18. Direct `FHE.decrypt(...)` call in a production contract
+
+**Root cause**: `FHE.decrypt(handle)` is a forge-fhevm cleartext-mode test helper that reads from the local `plaintexts(bytes32)` mapping the cleartext executor maintains. **The function does not exist on Sepolia or mainnet.** Production contracts must use the async gateway (`FHE.makePubliclyDecryptable` + off-chain `publicDecrypt` + on-chain `FHE.checkSignatures`) for public reveal, or grant user-level `FHE.allow(handle, user)` for browser-side user decryption.
+
+**What goes wrong**: Contract compiles, tests pass on the local cleartext host, deploys to Sepolia, then reverts on the first call that exercises the decrypt path. Often caught only after deployment.
+
+**Fixed (public reveal — 3-step async):**
+```solidity
+function requestReveal() external { FHE.makePubliclyDecryptable(_tally); }
+function finalize(uint64 tally, bytes calldata proof) external {
+    bytes32[] memory h = new bytes32[](1); h[0] = FHE.toBytes32(_tally);
+    FHE.checkSignatures(h, abi.encode(tally), proof);
+    _tallyClear = tally;
+}
+```
+
+**Fixed (user decryption):** grant `FHE.allow(handle, user)` after writing the handle; the frontend uses `useUserDecrypt`.
+
+Lint: AP-018 fires whenever a production contract calls `FHE.decrypt(...)`.
+
+---
+
+### 19. Deprecated SDK v2 hooks (`useFhevm`, `useFHEEncryption`, `useFHEDecrypt`)
+
+**Root cause**: These hooks shipped in `@zama-fhe/react-sdk` v2 (the older API used by previous `fhevm-react-template` revisions). They were removed in v3; the current API is `useEncrypt`, `useUserDecrypt` + `useAllow` + `useIsAllowed`, `usePublicDecrypt`. The `<ZamaProvider>` replaces the imperative `useFhevm` hook.
+
+**What goes wrong**: Importing the v2 names from `@zama-fhe/react-sdk` v3 produces a "module has no exported member" TypeScript error at build time. New code that copies from a v2 tutorial without migrating hits this immediately.
+
+**Fixed:** see `references/14-sdk-v3-frontend.md` and `templates/sdk-v3/`. The 1:1 migration map is in `14-sdk-v3-frontend.md` §1.
+
+Lint: AP-019 catches imports of `useFhevm` / `useFHEEncryption` / `useFHEDecrypt` from `@zama-fhe/react-sdk` or `@zama-fhe/sdk`.
+
+---
+
+### 20. `await someHook.mutate(...)` instead of `mutateAsync`
+
+**Root cause**: All TanStack-Query mutations expose two trigger functions: `mutate(input)` is fire-and-forget (returns void), `mutateAsync(input)` returns a `Promise` resolving to the result. Awaiting `mutate` gives `undefined`.
+
+**What goes wrong**: Code that needs the result of `useEncrypt`, `usePublicDecrypt`, `useAllow`, etc. silently gets `undefined` and the next line throws on `undefined.handles` or similar. The error message points at the destructuring site, not the actual bug.
+
+**Wrong:**
+```typescript
+const result = await encrypt.mutate({...});   // ❌ result is undefined
+const handle = result.handles[0];               // throws
+```
+
+**Fixed:**
+```typescript
+const result = await encrypt.mutateAsync({...}); // ✅ returns the mutation result
+const handle = result.handles[0];
+```
+
+Lint: AP-020 catches `await <name>.mutate(...)` in `.ts`/`.tsx`/`.js`/`.jsx`.
+
+---
+
+### 21. Missing `NEXT_PUBLIC_ALCHEMY_API_KEY` breaks the prod build
+
+**Root cause**: The wagmi config in `fhevm-react-template/packages/nextjs/` has a runtime guard that throws when this env var is undefined during prod rendering. The guard fires even when the build only targets local anvil, because Next.js prerenders the page at build time.
+
+**What goes wrong**: `pnpm next:build` (or `pnpm vercel`) fails with `Error: Environment variable NEXT_PUBLIC_ALCHEMY_API_KEY is required in production`. The dev server works fine; only the prod build breaks.
+
+**Fixed:** Create `packages/nextjs/.env.local` with `NEXT_PUBLIC_ALCHEMY_API_KEY=local_placeholder`. A real Alchemy key is only required for actual Sepolia traffic; any non-empty string is enough to satisfy the build guard.
+
+Lint: AP-021 fires when a file references `NEXT_PUBLIC_ALCHEMY_API_KEY` but no `.env` / `.env.local` exists in the directory tree.
+
+---
+
+### 22. `npm install` inside a pnpm workspace
+
+**Root cause**: Mixing package managers in a workspace creates a `package-lock.json` next to the existing `pnpm-lock.yaml`. Pnpm subsequently refuses to link binaries from the npm-installed package into `node_modules/.bin/`.
+
+**What goes wrong**: A package that declares `"bin": { ... }` in its `package.json` (e.g. this skill's `fhevm-lint`) installs into `node_modules/` but `npx <bin-name>` reports "command not found". The package's source is on disk; the binary just isn't symlinked.
+
+**Fixed:** Use the same package manager as the workspace. For the React template (pnpm workspace), install dev deps from the workspace root:
+```bash
+pnpm add -w --save-dev github:harystyleseze/confidential-fhevm-skill
+```
+Or filter into a specific package: `pnpm --filter ./packages/foundry add --save-dev <pkg>`.
+
+Lint: not detected by `fhevm-lint` (it's a tooling-layer issue, not a code issue). `references/15-failure-modes.md` §1 has the symptom and fix.

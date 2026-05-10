@@ -1,6 +1,6 @@
 # 06 — Writing FHEVM Contracts: Pattern Catalogue
 
-> Open whenever generating or reviewing Solidity that uses `FHE.*`.
+> Open whenever generating or reviewing Solidity that uses `FHE.*`. The contract patterns here are **track-agnostic** — they apply identically on Foundry (`forge-fhevm`) and Hardhat (`@fhevm/hardhat-plugin`). The Solidity API is unchanged between tracks.
 
 Every snippet below assumes:
 ```solidity
@@ -8,6 +8,8 @@ import {FHE, euint8, euint64, externalEuint64, ebool, eaddress} from "@fhevm/sol
 import {ZamaEthereumConfig} from "@fhevm/solidity/config/ZamaConfig.sol";
 ```
 …and that the contract inherits `ZamaEthereumConfig` (or the upgradeable variant). Without this inheritance, every `FHE.*` call reverts.
+
+**One-vs-many input proofs.** Foundry's `forge-fhevm` cleartext-mode test helpers validate one ciphertext per proof. Hardhat's `fhevm.createEncryptedInput(...).addBool(...).add64(...).encrypt()` batches multiple ciphertexts into one proof. **For new code, prefer one proof per ciphertext** (one `bytes calldata <name>Proof` parameter per `externalEuintNN` parameter) — this design works in both tracks and is the only design that's fully testable in `forge-fhevm` cleartext mode. See [`13-foundry-toolchain.md`](13-foundry-toolchain.md) §4 for the rationale.
 
 ## Contents
 

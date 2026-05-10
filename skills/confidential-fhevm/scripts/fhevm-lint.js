@@ -103,19 +103,25 @@ function collectFiles(targets) {
     }
     const stat = fs.statSync(t);
     if (stat.isDirectory()) walkDir(t, out);
-    else if (t.endsWith(".sol")) out.push(t);
+    else if (/\.(sol|tsx?|jsx?)$/.test(t)) out.push(t);
   }
   return out;
 }
 
 function walkDir(dir, out) {
   for (const name of fs.readdirSync(dir)) {
-    if (name === "node_modules" || name === ".git" || name === "artifacts" || name === "cache")
+    if (name === "node_modules" || name === ".git" || name === "artifacts" || name === "cache" || name === ".next" || name === "dist" || name === "out")
       continue;
     const full = path.join(dir, name);
     const stat = fs.statSync(full);
     if (stat.isDirectory()) walkDir(full, out);
-    else if (name.endsWith(".sol")) out.push(full);
+    else if (
+      name.endsWith(".sol") ||
+      name.endsWith(".ts")  ||
+      name.endsWith(".tsx") ||
+      name.endsWith(".js")  ||
+      name.endsWith(".jsx")
+    ) out.push(full);
   }
 }
 
@@ -124,6 +130,14 @@ function walkDir(dir, out) {
 function analyseFile(filePath) {
   const source = fs.readFileSync(filePath, "utf8");
   const findings = [];
+
+  // Frontend (TS/TSX/JS/JSX) rules — regex-only, no AST.
+  if (/\.(tsx?|jsx?)$/.test(filePath)) {
+    findings.push(...checkAP019_DeprecatedV2Hooks(source, filePath));
+    findings.push(...checkAP020_FireAndForgetMutate(source, filePath));
+    findings.push(...checkAP021_MissingAlchemyEnv(source, filePath));
+    return findings; // no Solidity AST for frontend files
+  }
 
   // ---- Pre-AST regex checks (work even on un-parseable files) ----
   findings.push(...checkAP013_TFHENamespace(source, filePath));
@@ -181,16 +195,25 @@ function analyseContract(contract, source, filePath, findings) {
   // collect encrypted-typed state variables for AP-001
   const encryptedStateVars = collectEncryptedStateVars(contract);
 
+  // collect encrypted FIELD names from struct definitions on this contract
+  // (so AP-001 catches `state.encField = …` and `state[key].encField = …` writes,
+  //  not just direct top-level assignments)
+  const encryptedStructFields = collectEncryptedStructFields(contract);
+
+  // Slice the contract source once; per-function analysis re-uses it for AP-008's
+  // "is the whole contract using public decryption?" guard.
+  const contractSource = sliceContract(contract, source);
+
   // AP-006: collect view/pure functions with encrypted params and plaintext return
   parser.visit(contract, {
     FunctionDefinition(fn) {
       if (!fn.body) return; // abstract / interface fn
-      analyseFunction(fn, source, filePath, findings, {encryptedStateVars});
+      analyseFunction(fn, source, filePath, findings, {encryptedStateVars, encryptedStructFields, contractSource});
     },
   });
 
   // AP-007: contract calls FHE.checkSignatures but never FHE.makePubliclyDecryptable
-  const sourceText = sliceContract(contract, source);
+  const sourceText = contractSource;
   const usesCheckSignatures = /\bFHE\.checkSignatures\b/.test(sourceText);
   const usesMakePublic = /\bFHE\.makePubliclyDecryptable\b/.test(sourceText);
   if (usesCheckSignatures && !usesMakePublic) {
@@ -225,6 +248,43 @@ function collectEncryptedStateVars(contract) {
     }
   }
   return map;
+}
+
+/**
+ * Walk the contract for `struct X { … euint64 field; … }` declarations and
+ * collect the names of fields that are encrypted (or arrays/mappings of
+ * encrypted types). Used by AP-001 to catch `state.encField = …` writes.
+ *
+ * Heuristic limitation: this is a NAME-based check. If a contract declares
+ * two unrelated structs that both have a field literally called `value` and
+ * one is encrypted while the other is not, AP-001 may flag a write to the
+ * non-encrypted field. In practice this is rare; finding output documents
+ * the heuristic so users can suppress when intentional.
+ */
+function collectEncryptedStructFields(contract) {
+  const fields = new Set();
+  parser.visit(contract, {
+    StructDefinition(node) {
+      for (const m of node.members ?? []) {
+        const tn = typeNameToString(m.typeName);
+        if (typeIsEncrypted(tn)) fields.add(m.name);
+        // arrays/mappings of encrypted types still expose the field name itself
+        if (
+          m.typeName?.type === "ArrayTypeName" &&
+          typeIsEncrypted(typeNameToString(m.typeName.baseTypeName))
+        ) {
+          fields.add(m.name);
+        }
+        if (
+          m.typeName?.type === "Mapping" &&
+          typeIsEncrypted(typeNameToString(m.typeName.valueType))
+        ) {
+          fields.add(m.name);
+        }
+      }
+    },
+  });
+  return fields;
 }
 
 function typeNameToString(tn) {
@@ -414,9 +474,13 @@ function analyseFunction(fn, source, filePath, findings, ctx) {
     });
   }
 
-  // AP-008 (heuristic): writes encrypted-typed handle but never calls FHE.allow(_, _)
-  // — only flag when there's a writes-and-allowThis pattern but no FHE.allow at all.
-  if (writesEncrypted && callsAllowThis && !/\bFHE\.allow\s*\(/.test(fnText)) {
+  // AP-008 (heuristic): writes encrypted-typed handle but never calls FHE.allow(_, _).
+  // Skip the rule when the enclosing contract itself uses FHE.makePubliclyDecryptable —
+  // that's a strong signal the app exposes data via public decryption only, not user
+  // decryption. (Without this guard, AP-008 false-positives on every confidential
+  // voting / auction / DAO contract that reveals tallies publicly after a deadline.)
+  const usesPublicDecrypt = ctx.contractSource && /\bFHE\.makePubliclyDecryptable\b/.test(ctx.contractSource);
+  if (writesEncrypted && callsAllowThis && !/\bFHE\.allow\s*\(/.test(fnText) && !usesPublicDecrypt) {
     findings.push({
       file: filePath,
       line: fn.loc.start.line,
@@ -425,7 +489,7 @@ function analyseFunction(fn, source, filePath, findings, ctx) {
       severity: "HIGH",
       message: `function '${fn.name}' writes encrypted state and calls allowThis but never FHE.allow(handle, user) — the user cannot decrypt`,
       fix: "Add FHE.allow(stateVar, msg.sender) (or the relevant user address) after the state write so they can user-decrypt off-chain. If decryption is intentionally not exposed to users, suppress this finding.",
-      heuristic: "Some apps reveal data only via public decryption; suppress with a code comment if intentional.",
+      heuristic: "Suppressed when the enclosing contract uses FHE.makePubliclyDecryptable (signals public-decrypt-only design).",
     });
   }
 
@@ -530,7 +594,18 @@ function detectEncryptedStateWrite(fn, ctx) {
       ["=", "+=", "-=", "|=", "&=", "^="].includes(node.operator)
     ) {
       const lhsName = exprBaseName(node.left);
-      if (lhsName && ctx.encryptedStateVars.has(lhsName)) found = true;
+      if (lhsName && ctx.encryptedStateVars.has(lhsName)) {
+        found = true;
+        return;
+      }
+      // struct-member write: LHS like `proposals[id].yesTallyEnc` or `p.yesTallyEnc`.
+      // We can't always resolve which struct type p refers to from the AST alone,
+      // but if the field name is in our set of known encrypted struct fields,
+      // treat it as an encrypted write.
+      const lhsLeafField = lhsLeafMemberName(node.left);
+      if (lhsLeafField && ctx.encryptedStructFields?.has(lhsLeafField)) {
+        found = true;
+      }
     }
   };
   parser.visit(fn, {
@@ -538,6 +613,19 @@ function detectEncryptedStateWrite(fn, ctx) {
     Assignment: visitor,
   });
   return found;
+}
+
+/**
+ * For an assignment LHS, return the *leaf* member name being assigned.
+ *   p.yesTallyEnc           → "yesTallyEnc"
+ *   proposals[id].yesTally  → "yesTally"
+ *   proposals[id]           → null  (no member access at the leaf)
+ *   foo                     → null  (just an identifier)
+ */
+function lhsLeafMemberName(expr) {
+  if (!expr) return null;
+  if (expr.type === "MemberAccess") return expr.memberName;
+  return null;
 }
 
 function stripComments(src) {
@@ -636,6 +724,74 @@ function checkAP015_BytecodeHash(source, filePath) {
       severity: "LOW",
       message: "hardhat.config does not set `metadata.bytecodeHash: \"none\"` — keeping it enabled bloats deployments and complicates verification",
       fix: "Add `metadata: { bytecodeHash: \"none\" }` under `solidity.settings`.",
+    },
+  ];
+}
+
+function checkAP019_DeprecatedV2Hooks(source, filePath) {
+  // Match imports from @zama-fhe/react-sdk that pull in v2-only hook names.
+  const findings = [];
+  const v2Hooks = new Set(["useFhevm", "useFHEEncryption", "useFHEDecrypt"]);
+  const importRe = /import\s*\{([^}]+)\}\s*from\s*["']@zama-fhe\/(react-sdk|sdk)["']/g;
+  let m;
+  while ((m = importRe.exec(source)) !== null) {
+    const names = m[1].split(",").map((s) => s.trim().split(/\s+/)[0]);
+    for (const n of names) {
+      if (v2Hooks.has(n)) {
+        const lineNum = source.slice(0, m.index).split("\n").length;
+        findings.push({
+          file: filePath,
+          line: lineNum,
+          col: 0,
+          code: "AP-019",
+          severity: "HIGH",
+          message: `deprecated SDK v2 hook '${n}' imported from @zama-fhe/react-sdk — removed in v3`,
+          fix: "Use the v3 equivalents: useEncrypt, useUserDecrypt + useAllow + useIsAllowed, the <ZamaProvider>. See references/14-sdk-v3-frontend.md.",
+        });
+      }
+    }
+  }
+  return findings;
+}
+
+function checkAP020_FireAndForgetMutate(source, filePath) {
+  // `await someHook.mutate(...)` — should be mutateAsync.
+  const findings = [];
+  const re = /\bawait\s+(\w+)\.mutate\s*\(/g;
+  let m;
+  while ((m = re.exec(source)) !== null) {
+    const lineNum = source.slice(0, m.index).split("\n").length;
+    findings.push({
+      file: filePath,
+      line: lineNum,
+      col: 0,
+      code: "AP-020",
+      severity: "MEDIUM",
+      message: `awaited '${m[1]}.mutate(...)' — mutate is fire-and-forget, await returns undefined`,
+      fix: `Use ${m[1]}.mutateAsync(...) when you need the result of the mutation.`,
+    });
+  }
+  return findings;
+}
+
+function checkAP021_MissingAlchemyEnv(source, filePath) {
+  if (!/NEXT_PUBLIC_ALCHEMY_API_KEY/.test(source)) return [];
+  let dir = path.dirname(filePath);
+  for (let i = 0; i < 6 && dir !== "/"; i++) {
+    if (fs.existsSync(path.join(dir, ".env.local")) || fs.existsSync(path.join(dir, ".env"))) {
+      return [];
+    }
+    dir = path.dirname(dir);
+  }
+  return [
+    {
+      file: filePath,
+      line: 1,
+      col: 0,
+      code: "AP-021",
+      severity: "LOW",
+      message: "code references NEXT_PUBLIC_ALCHEMY_API_KEY but no .env / .env.local found up the tree",
+      fix: "Create packages/nextjs/.env.local with NEXT_PUBLIC_ALCHEMY_API_KEY=local_placeholder for builds; a real Alchemy key is only needed for Sepolia traffic.",
     },
   ];
 }

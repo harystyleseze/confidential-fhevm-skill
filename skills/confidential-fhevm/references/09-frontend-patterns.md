@@ -1,4 +1,8 @@
-# Frontend Patterns for FHEVM dApps
+# 09 — Frontend Patterns for FHEVM dApps (SDK v2)
+
+> **For SDK v3 (the current canonical, shipped with `fhevm-react-template` today), see [`14-sdk-v3-frontend.md`](14-sdk-v3-frontend.md).** This document covers `@zama-fhe/sdk` v2 patterns — the older `Token` class API and the removed `useFhevm` / `useFHEEncryption` / `useFHEDecrypt` hooks. Use it when maintaining an existing v2 codebase or porting a v2 app forward.
+>
+> The credential-lifecycle, loading-state, and two-phase-unshield principles below apply to both SDK versions; only the API names change.
 
 ## Credential Lifecycle
 

@@ -1,4 +1,6 @@
-# Project Setup Guide
+# 02 — Project Setup (Hardhat track)
+
+> **For greenfield full-stack projects, use the Foundry track instead** — see [`13-foundry-toolchain.md`](13-foundry-toolchain.md). This document covers the Hardhat track, which still supports existing repos and contract-only projects.
 
 ## Hardhat Project (Contract Development)
 

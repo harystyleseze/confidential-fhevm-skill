@@ -1,66 +1,78 @@
 ---
-description: "Build, test, and deploy confidential smart contracts on Zama's FHEVM. Apply when writing Solidity with encrypted types (ebool, euint8-256, eaddress), FHE operations (add, select, comparisons), ACL permissions (FHE.allow, allowThis, allowTransient), encrypted inputs (externalEuint + FHE.fromExternal), public/user decryption, ERC-7984 confidential tokens, fhevm hardhat tests, or @zama-fhe/sdk frontends. Pinned to @fhevm/solidity 0.11.1, @fhevm/hardhat-plugin 0.4.2, @zama-fhe/sdk 2.3.0, Solidity 0.8.27."
-globs: contracts/**/*.sol,test/**/*.ts,test/**/*.tsx,deploy/**/*.ts,packages/nextjs/**/*.{ts,tsx},packages/fhevm-sdk/**/*.{ts,tsx},hardhat.config.{ts,js}
+description: "Build, test, and deploy confidential smart contracts on Zama's FHEVM. Apply when writing Solidity with encrypted types (ebool, euint8-256, eaddress), FHE operations (add, select, comparisons), ACL permissions (FHE.allow, allowThis, allowTransient), encrypted inputs (externalEuint + FHE.fromExternal), public/user decryption, ERC-7984 confidential tokens, Foundry tests (forge-fhevm), Hardhat tests (@fhevm/hardhat-plugin), or @zama-fhe/react-sdk v3 frontends. Pinned to @fhevm/solidity 0.11.1, forge-fhevm eba2324, @fhevm/hardhat-plugin 0.4.2, @zama-fhe/sdk 3.0.0, @zama-fhe/react-sdk 3.0.0, Solidity 0.8.27."
+globs: contracts/**/*.sol,packages/foundry/src/**/*.sol,packages/foundry/test/**/*.sol,packages/foundry/script/**/*.sol,test/**/*.ts,test/**/*.tsx,deploy/**/*.ts,packages/nextjs/**/*.{ts,tsx},packages/fhevm-sdk/**/*.{ts,tsx},hardhat.config.{ts,js},foundry.toml
 alwaysApply: false
 ---
 
 # FHEVM Development (Cursor Rule)
 
-Refer to the SKILL.md package at `skills/confidential-fhevm/` for full details. Use this rule as the in-editor companion. The references below are the canonical source — read them when this rule says so.
+Refer to the SKILL.md package at `skills/confidential-fhevm/` for full details. Use this rule as the in-editor companion.
+
+## Pick a track first
+- **Foundry track (current canonical):** the official `fhevm-react-template` today — `packages/foundry/` + `@zama-fhe/react-sdk` v3. Read `references/13-foundry-toolchain.md` and `references/14-sdk-v3-frontend.md`.
+- **Hardhat track (legacy):** existing Hardhat repos + `@fhevm/hardhat-plugin` + SDK v2. Read `references/02-project-setup.md` and `references/09-frontend-patterns.md`.
+
+Contract Solidity API is **identical** between tracks. Tests, deploy scripts, and frontend hooks differ.
 
 ## Pinned versions
 - `@fhevm/solidity ^0.11.1`
-- `@fhevm/hardhat-plugin ^0.4.2`
-- `@zama-fhe/sdk 2.3.0` (or `@zama-fhe/relayer-sdk ^0.4.1`)
-- Solidity `0.8.27` (EVM `cancun`, optimizer 800 runs, `metadata.bytecodeHash: "none"`)
-- ethers `^6.16.0`
+- `forge-fhevm eba2324` (Foundry track)
+- `@fhevm/hardhat-plugin ^0.4.2` (Hardhat track)
+- `@zama-fhe/sdk 3.0.0` / `@zama-fhe/react-sdk 3.0.0` (current frontend)
+- Solidity `0.8.27`, EVM `cancun`, optimizer 800 runs, `metadata.bytecodeHash: "none"` / `bytecode_hash = "none"`
+- Next.js 15.2, React 19, wagmi 2.19, RainbowKit 2.2
 
 ## The fundamentals (always apply)
-
-1. **Handles, not values.** Encrypted types appear as `bytes32` handles on-chain. The ciphertext lives in the off-chain coprocessor.
-2. **New handles have zero ACL.** After every state write, call `FHE.allowThis(handle)` and, where users need to decrypt, `FHE.allow(handle, user)`. Permissions never propagate from the operands.
-3. **Never branch on `ebool`.** Use `FHE.select(condition, ifTrue, ifFalse)`. Both branches execute; the coprocessor selects inside the ciphertext.
-4. **Decryption is async.** Either user decryption (EIP-712 + KMS, browser-side) or public decryption (3 steps: `makePubliclyDecryptable` → off-chain `publicDecrypt` → on-chain `checkSignatures`).
+1. **Handles, not values.** Encrypted types appear as `bytes32` handles on-chain.
+2. **New handles have zero ACL.** After every state write, call `FHE.allowThis(handle)` and, where users need to decrypt, `FHE.allow(handle, user)`. Permissions never propagate.
+3. **Never branch on `ebool`.** Use `FHE.select(condition, ifTrue, ifFalse)`.
+4. **Decryption is async.** User decryption (EIP-712 + KMS) or public decryption (3 steps: `makePubliclyDecryptable` → off-chain `publicDecrypt` → on-chain `checkSignatures`).
 
 ## Mandatory rules — verify on every Solidity edit
-
-- Inherit `ZamaEthereumConfig` (or `ZamaEthereumConfigUpgradeable`) on every contract that calls `FHE.*`.
+- Inherit `ZamaEthereumConfig` (or `…Upgradeable`) on every contract that calls `FHE.*`.
 - Validate every `externalEuint*` parameter with `FHE.fromExternal(handle, inputProof)` before use.
 - Never use `if` / `else` / `require` / `revert` on an `ebool`.
-- Use `FHE.select` for conditional logic; encrypted error codes for failure surfacing.
 - Use scalar literals on the **right** of an FHE op (`FHE.add(cipher, 42)`).
 - `FHE.div` / `FHE.rem` only accept plaintext divisors.
 - `FHE.rand*` only works in state-changing functions.
-- Uninitialised encrypted handles read as `ethers.ZeroHash` — check before decrypting.
 - Returns to other contracts need `FHE.allowTransient(handle, msg.sender)`.
-- Never call `FHE.encrypt*` or `FHE.asEuint*` inside a loop body (gas bomb).
-- Production contracts must not call `FHE.decrypt(...)` directly — use the async gateway.
+- Never call `FHE.encrypt*` or `FHE.asEuint*` inside a loop body.
+- Production contracts must not call `FHE.decrypt(...)` directly.
+- **Prefer one `bytes` proof per ciphertext** (one `bytes calldata <name>Proof` per `externalEuintNN`) — fully testable in Foundry cleartext mode.
+
+## Mandatory rules — frontend (SDK v3)
+- Do not import `useFhevm`, `useFHEEncryption`, or `useFHEDecrypt` (SDK v2; removed). Use `useEncrypt`, `useUserDecrypt` + `useAllow` + `useIsAllowed`, `usePublicDecrypt`.
+- Always `await hook.mutateAsync({...})` when you need the result. `mutate(...)` is fire-and-forget.
+- Cap `gas` on FHE write calls: `gas: 15_000_000n` (Sepolia block-gas limit is 16,777,216).
+- Gate `useUserDecrypt` on `handle !== ZERO_HANDLE` to avoid errors on uninitialised state.
+- `usePublicDecrypt` returns `{ clearValues, abiEncodedClearValues, decryptionProof }` — feed `decryptionProof` straight into `FHE.checkSignatures(...)` on-chain.
+- For ERC-7984 token flows use the dedicated hooks: `useShield`, `useUnshield`, `useConfidentialBalance`, `useConfidentialTransfer`.
 
 ## Output contract
-
 When asked to build a contract, produce all five:
-1. `contracts/<Name>.sol` (compiles, lint-clean)
-2. `test/<Name>.test.ts` (mock + at least one branch of every `FHE.select`)
-3. `deploy/01_<name>.ts` (`hardhat-deploy`, with `func.id` and `func.tags`)
-4. `packages/nextjs/app/<route>/page.tsx` (encrypt → submit → decrypt with loading state)
-5. Lint-clean confirmation: `npx fhevm-lint contracts/`
-
-If lint, compile, or tests fail, fix and re-emit. Do not return half-done work.
+1. Contract — `packages/foundry/src/<Name>.sol` (Foundry) or `contracts/<Name>.sol` (Hardhat)
+2. Test — `packages/foundry/test/<Name>.t.sol` (FhevmTest) or `test/<Name>.test.ts` (mock)
+3. Deploy — `packages/foundry/script/Deploy<Name>.s.sol` + a line in `scripts/deploy-localhost.sh` (Foundry) or `deploy/01_<name>.ts` (Hardhat)
+4. Frontend hook + page — `packages/nextjs/hooks/<feature>/use<Name>.tsx` + `packages/nextjs/app/<route>/page.tsx`
+5. Lint clean — `npx fhevm-lint packages/foundry/src/ packages/nextjs/` returns 0 CRITICAL/HIGH findings
 
 ## Validation hook
-
-Before responding with code, run the linter (when available in the workspace):
+Before responding with code, run the linter:
 ```bash
-npx fhevm-lint <path-to-file-or-dir>
+npx fhevm-lint <path>
 ```
 Fix every CRITICAL and HIGH finding before returning.
 
 ## Deeper references (open as needed)
-
-- `skills/confidential-fhevm/SKILL.md` — full skill (router)
-- `skills/confidential-fhevm/references/06-writing-contracts.md` — full pattern catalogue
+- `skills/confidential-fhevm/SKILL.md` — router; read first
+- `skills/confidential-fhevm/references/13-foundry-toolchain.md` — Foundry + forge-fhevm
+- `skills/confidential-fhevm/references/14-sdk-v3-frontend.md` — @zama-fhe/react-sdk v3
+- `skills/confidential-fhevm/references/15-failure-modes.md` — operational gotchas
+- `skills/confidential-fhevm/references/06-writing-contracts.md` — track-agnostic Solidity patterns
 - `skills/confidential-fhevm/references/05-permission-model.md` — ACL lifecycle
-- `skills/confidential-fhevm/references/11-pitfall-catalog.md` — every anti-pattern with worked fix
+- `skills/confidential-fhevm/references/11-pitfall-catalog.md` — 22 anti-patterns with worked fixes
 - `skills/confidential-fhevm/references/10-erc7984-confidential-tokens.md` — confidential token spec
-- `skills/confidential-fhevm/scripts/fhevm-lint.js` — the static linter (17 rules)
-- `skills/confidential-fhevm/examples/` — three full worked examples (DAO voting, sealed-bid auction, payroll)
+- `skills/confidential-fhevm/templates/foundry/` — Foundry-track starter files
+- `skills/confidential-fhevm/templates/sdk-v3/` — SDK v3 hook + page templates
+- `skills/confidential-fhevm/examples/foundry/confidential-voting.md` — full end-to-end worked example
+- `skills/confidential-fhevm/scripts/fhevm-lint.js` — static linter (20 rules)

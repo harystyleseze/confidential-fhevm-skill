@@ -2,17 +2,57 @@
 
 > Open when deploying to local, Sepolia testnet, or mainnet.
 
+This document covers both tracks. The Foundry track is dominant for full-stack projects today (see §1); the Hardhat track (§2 onward) is documented for contract-only / legacy projects.
+
 ## Contents
-- Deploy script (hardhat-deploy)
-- Sepolia prerequisites
-- Network choice matrix
-- Etherscan V2 + Sourcify
-- Commands reference
-- Post-deploy: update frontend ABI/address
+1. **Foundry track** — `pnpm deploy:localhost` / `pnpm deploy:sepolia`, auto-regenerated frontend ABIs
+2. Hardhat track — `hardhat-deploy` pattern
+3. Sepolia prerequisites
+4. Network choice matrix
+5. Etherscan V2 + Sourcify
+6. Commands reference
+7. Post-deploy: frontend ABI auto-sync
 
 ---
 
-## Deploy script (hardhat-deploy)
+## 1. Foundry track — `pnpm deploy:localhost`
+
+The official `fhevm-react-template` orchestrates Foundry deploys via shell scripts that (a) invoke `forge script`, then (b) regenerate the frontend's auto-managed sidecar files. The end-to-end flow looks like:
+
+```bash
+pnpm chain &                                 # terminal 1: anvil + FHEVM cleartext host stack
+pnpm deploy:localhost                        # terminal 2: deploy + regenerate frontend ABIs
+```
+
+Inside `scripts/deploy-localhost.sh`, each contract gets one forge-script call:
+
+```bash
+forge script script/DeployFHECounter.s.sol:DeployFHECounter \
+    --rpc-url "$RPC_URL" --private-key "$ANVIL_PK" --broadcast
+
+# To add ConfidentialVoting (or any new contract), append a second call:
+forge script script/DeployConfidentialVoting.s.sol:DeployConfidentialVoting \
+    --rpc-url "$RPC_URL" --private-key "$ANVIL_PK" --broadcast
+
+# Then regenerate the frontend sidecars (one-shot for all contracts in broadcast/):
+pnpm generate
+```
+
+`pnpm generate` walks `packages/foundry/broadcast/*/31337/run-latest.json` and emits one `<Name>.ts` + one `<Name>.local.ts` per deployed contract under `packages/nextjs/contracts/`. The frontend's `deploymentFor(Contract, chainId)` helper reads these.
+
+For Sepolia (`pnpm deploy:sepolia`), the same shell pattern reads `.env.local`:
+
+```bash
+DEPLOYER_PRIVATE_KEY=0x...                   # funded with Sepolia ETH
+SEPOLIA_RPC_URL=https://eth-sepolia.g.alchemy.com/v2/YOUR_KEY
+ETHERSCAN_API_KEY=...                        # optional, enables --verify
+```
+
+Add `--verify` to the forge-script call if you want Etherscan verification in the same step.
+
+---
+
+## 2. Hardhat track — `hardhat-deploy`
 
 ```typescript
 import {DeployFunction} from "hardhat-deploy/types";
@@ -96,7 +136,11 @@ npx hardhat deploy --network mainnet
 npx hardhat verify --network mainnet <ADDRESS>
 ```
 
-## Post-deploy: update frontend
+## 7. Post-deploy frontend sync (auto-regenerated)
+
+**Foundry track:** Nothing to do manually. `pnpm deploy:localhost` and `pnpm deploy:sepolia` both run `pnpm generate` as their last step, which walks `packages/foundry/broadcast/` and `packages/foundry/out/` and emits one tracked file (`<Name>.ts`) plus one gitignored overlay (`<Name>.local.ts`) per contract. Consumer code uses `deploymentFor(Contract, chainId)` and the two files merge at module load. If the sidecars drift, just rerun `pnpm generate`.
+
+**Hardhat track:** Manual sync.
 
 Frontend looks up contracts in `deployedContracts.ts` by chain ID:
 ```typescript

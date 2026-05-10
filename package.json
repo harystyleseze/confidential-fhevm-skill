@@ -1,7 +1,7 @@
 {
   "name": "confidential-fhevm-skill",
   "version": "1.0.0",
-  "description": "AI agent skill (Claude Code, Cursor, Windsurf) for building, testing, and deploying confidential smart contracts on FHEVM. Ships SKILL.md, twelve reference docs, three worked examples, four production templates, and an executable static linter with seventeen anti-pattern rules.",
+  "description": "AI agent skill (Claude Code, Cursor, Windsurf) for building, testing, and deploying confidential smart contracts on FHEVM. Covers both the Foundry track (forge-fhevm + @zama-fhe/sdk v3, current canonical) and the Hardhat track (@fhevm/hardhat-plugin + SDK v2, for existing projects). Ships SKILL.md, fifteen reference docs, four worked examples, three template suites (Hardhat, Foundry, SDK v3), and an executable static linter with twenty anti-pattern rules across Solidity AST and frontend regex.",
   "license": "MIT",
   "author": "harystyleseze",
   "homepage": "https://github.com/harystyleseze/confidential-fhevm-skill",

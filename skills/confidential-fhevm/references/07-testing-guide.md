@@ -1,4 +1,8 @@
-# Testing FHEVM Contracts
+# 07 — Testing FHEVM Contracts (Hardhat track)
+
+> **For the Foundry track see [`13-foundry-toolchain.md`](13-foundry-toolchain.md) §3-§5.** This document covers `@fhevm/hardhat-plugin` mock-mode testing.
+>
+> The *what-to-test* principles below apply to both tracks; only the harness APIs differ. Foundry harness: `FhevmTest` base + `encryptUint64(value, user, contract)` + `decrypt(handle)` + `buildDecryptionProof(handles, abiEncoded)`. Hardhat harness: `fhevm.createEncryptedInput(...)` + `fhevm.userDecryptEuint(...)`.
 
 ## What to Test
 
