@@ -1,0 +1,39 @@
+{
+  "name": "confidential-fhevm-skill",
+  "version": "1.0.0",
+  "description": "AI agent skill (Claude Code, Cursor, Windsurf) for building, testing, and deploying confidential smart contracts on FHEVM. Ships SKILL.md, twelve reference docs, three worked examples, four production templates, and an executable static linter with seventeen anti-pattern rules.",
+  "license": "MIT",
+  "author": "harystyleseze",
+  "homepage": "https://github.com/harystyleseze/confidential-fhevm-skill",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/harystyleseze/confidential-fhevm-skill.git"
+  },
+  "keywords": [
+    "fhevm",
+    "fhe",
+    "confidential-smart-contracts",
+    "ai-agent-skill",
+    "claude-code",
+    "cursor",
+    "windsurf",
+    "solidity",
+    "erc-7984",
+    "static-linter"
+  ],
+  "bin": {
+    "fhevm-lint": "skills/confidential-fhevm/scripts/fhevm-lint.js"
+  },
+  "scripts": {
+    "lint": "node skills/confidential-fhevm/scripts/fhevm-lint.js",
+    "lint:examples": "node skills/confidential-fhevm/scripts/fhevm-lint.js skills/confidential-fhevm/templates/contract.sol",
+    "test:lint": "node skills/confidential-fhevm/scripts/fhevm-lint.js tests/fixtures",
+    "verify": "bash skills/confidential-fhevm/scripts/verify.sh"
+  },
+  "dependencies": {
+    "@solidity-parser/parser": "^0.18.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

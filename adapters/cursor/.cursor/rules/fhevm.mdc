@@ -1,0 +1,66 @@
+---
+description: "Build, test, and deploy confidential smart contracts on Zama's FHEVM. Apply when writing Solidity with encrypted types (ebool, euint8-256, eaddress), FHE operations (add, select, comparisons), ACL permissions (FHE.allow, allowThis, allowTransient), encrypted inputs (externalEuint + FHE.fromExternal), public/user decryption, ERC-7984 confidential tokens, fhevm hardhat tests, or @zama-fhe/sdk frontends. Pinned to @fhevm/solidity 0.11.1, @fhevm/hardhat-plugin 0.4.2, @zama-fhe/sdk 2.3.0, Solidity 0.8.27."
+globs: contracts/**/*.sol,test/**/*.ts,test/**/*.tsx,deploy/**/*.ts,packages/nextjs/**/*.{ts,tsx},packages/fhevm-sdk/**/*.{ts,tsx},hardhat.config.{ts,js}
+alwaysApply: false
+---
+
+# FHEVM Development (Cursor Rule)
+
+Refer to the SKILL.md package at `skills/confidential-fhevm/` for full details. Use this rule as the in-editor companion. The references below are the canonical source — read them when this rule says so.
+
+## Pinned versions
+- `@fhevm/solidity ^0.11.1`
+- `@fhevm/hardhat-plugin ^0.4.2`
+- `@zama-fhe/sdk 2.3.0` (or `@zama-fhe/relayer-sdk ^0.4.1`)
+- Solidity `0.8.27` (EVM `cancun`, optimizer 800 runs, `metadata.bytecodeHash: "none"`)
+- ethers `^6.16.0`
+
+## The fundamentals (always apply)
+
+1. **Handles, not values.** Encrypted types appear as `bytes32` handles on-chain. The ciphertext lives in the off-chain coprocessor.
+2. **New handles have zero ACL.** After every state write, call `FHE.allowThis(handle)` and, where users need to decrypt, `FHE.allow(handle, user)`. Permissions never propagate from the operands.
+3. **Never branch on `ebool`.** Use `FHE.select(condition, ifTrue, ifFalse)`. Both branches execute; the coprocessor selects inside the ciphertext.
+4. **Decryption is async.** Either user decryption (EIP-712 + KMS, browser-side) or public decryption (3 steps: `makePubliclyDecryptable` → off-chain `publicDecrypt` → on-chain `checkSignatures`).
+
+## Mandatory rules — verify on every Solidity edit
+
+- Inherit `ZamaEthereumConfig` (or `ZamaEthereumConfigUpgradeable`) on every contract that calls `FHE.*`.
+- Validate every `externalEuint*` parameter with `FHE.fromExternal(handle, inputProof)` before use.
+- Never use `if` / `else` / `require` / `revert` on an `ebool`.
+- Use `FHE.select` for conditional logic; encrypted error codes for failure surfacing.
+- Use scalar literals on the **right** of an FHE op (`FHE.add(cipher, 42)`).
+- `FHE.div` / `FHE.rem` only accept plaintext divisors.
+- `FHE.rand*` only works in state-changing functions.
+- Uninitialised encrypted handles read as `ethers.ZeroHash` — check before decrypting.
+- Returns to other contracts need `FHE.allowTransient(handle, msg.sender)`.
+- Never call `FHE.encrypt*` or `FHE.asEuint*` inside a loop body (gas bomb).
+- Production contracts must not call `FHE.decrypt(...)` directly — use the async gateway.
+
+## Output contract
+
+When asked to build a contract, produce all five:
+1. `contracts/<Name>.sol` (compiles, lint-clean)
+2. `test/<Name>.test.ts` (mock + at least one branch of every `FHE.select`)
+3. `deploy/01_<name>.ts` (`hardhat-deploy`, with `func.id` and `func.tags`)
+4. `packages/nextjs/app/<route>/page.tsx` (encrypt → submit → decrypt with loading state)
+5. Lint-clean confirmation: `npx fhevm-lint contracts/`
+
+If lint, compile, or tests fail, fix and re-emit. Do not return half-done work.
+
+## Validation hook
+
+Before responding with code, run the linter (when available in the workspace):
+```bash
+npx fhevm-lint <path-to-file-or-dir>
+```
+Fix every CRITICAL and HIGH finding before returning.
+
+## Deeper references (open as needed)
+
+- `skills/confidential-fhevm/SKILL.md` — full skill (router)
+- `skills/confidential-fhevm/references/06-writing-contracts.md` — full pattern catalogue
+- `skills/confidential-fhevm/references/05-permission-model.md` — ACL lifecycle
+- `skills/confidential-fhevm/references/11-pitfall-catalog.md` — every anti-pattern with worked fix
+- `skills/confidential-fhevm/references/10-erc7984-confidential-tokens.md` — confidential token spec
+- `skills/confidential-fhevm/scripts/fhevm-lint.js` — the static linter (17 rules)
+- `skills/confidential-fhevm/examples/` — three full worked examples (DAO voting, sealed-bid auction, payroll)
