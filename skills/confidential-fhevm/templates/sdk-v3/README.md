@@ -5,8 +5,17 @@ For projects using `@zama-fhe/sdk` v3 and `@zama-fhe/react-sdk` v3 — the curre
 | File | Drop into |
 | --- | --- |
 | [`useFHEContract.tsx`](useFHEContract.tsx) | `packages/nextjs/hooks/<feature>/useMyContract.tsx` |
-| [`page.tsx`](page.tsx) | `packages/nextjs/app/<route>/page.tsx` |
+| [`page.tsx`](page.tsx) | `packages/nextjs/app/page.tsx` *(this is the home route — the dApp IS the landing page; see [`references/17-ux-patterns.md`](../../references/17-ux-patterns.md) for the principles)* |
 | [`next.config.ts`](next.config.ts) | `packages/nextjs/next.config.ts` *(replace the template default — the four mitigations inside are required for a clean dev start; see comment block at the top of the file)* |
+
+The `page.tsx` template exports reusable components — `CopyableCode`, `LifecycleStepper`, `RoleBanner`, `HowItWorks` — that any FHEVM dApp should use:
+
+- **`CopyableCode`** — click-to-copy chip for encrypted handles, contract addresses, dev keys.
+- **`LifecycleStepper`** — 3-step state indicator. Pass your own `labels` to rebrand for voting / auction / token wrap / payroll / anything.
+- **`RoleBanner`** — admin / member / spectator empty state. The spectator branch includes a local-dev onboarding panel (only renders on chain id 31337) that shows the anvil dev key with a one-click copy so a first-time builder can become the admin instantly.
+- **`HowItWorks`** — collapsible "how does this stay private?" explainer. Always include one on the home page.
+
+See [`references/17-ux-patterns.md`](../../references/17-ux-patterns.md) for the full pattern catalogue and the audit checklist every FHEVM dApp should pass.
 
 ## Why SDK v3 instead of v2?
 

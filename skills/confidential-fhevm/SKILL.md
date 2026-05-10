@@ -337,9 +337,10 @@ When asked to build a contract, the response must include all seven items below.
 | 2. Test | `packages/foundry/test/<Name>.t.sol` (inherits `FhevmTest`) | `test/<Name>.test.ts` (uses `fhevm.createEncryptedInput` mock) |
 | 3. Deploy script | `packages/foundry/script/Deploy<Name>.s.sol` + a `run_forge` line in BOTH `scripts/deploy-localhost.sh` AND `scripts/deploy-sepolia.sh` | `deploy/01_<name>.ts` (hardhat-deploy with `func.id` + `func.tags`) |
 | 4. Frontend hook | `packages/nextjs/hooks/<feature>/use<Name>.tsx` (SDK v3) | bespoke hook using SDK v2 patterns |
-| 5. Frontend page | `packages/nextjs/app/page.tsx` — the new dApp **is the home route**. Encrypts, submits, reads handle, decrypts on demand, three render states (form / reveal / finalised where applicable). | same |
+| 5. Frontend page | `packages/nextjs/app/page.tsx` — the new dApp **is the home route**. Built from [`templates/sdk-v3/page.tsx`](templates/sdk-v3/page.tsx) which ships the four reusable UX components (`CopyableCode`, `LifecycleStepper`, `RoleBanner`, `HowItWorks`). | same |
 | 6. Home-route wiring | `app/page.tsx` is REPLACED with the new feature page (preferred default). If the user explicitly asks to keep the existing demo, use a prominent first-viewport card on `/` that links to the feature route. **A bare sub-route with no home-page entry is a contract violation** — judges who open `localhost:3000` must land on the new dApp without clicking. | same |
 | 7. Deploy artifacts | `.env.example` at repo root listing `SEPOLIA_RPC_URL`, `DEPLOYER_PRIVATE_KEY`, optional `ETHERSCAN_API_KEY`; `## Live demo` placeholder block in the project README; `next.config.ts` mitigations from [`templates/sdk-v3/next.config.ts`](templates/sdk-v3/next.config.ts) (prevents the `WagmiProviderNotFoundError` documented as pitfall #23) | adapt to Hardhat networks block |
+| 8. UX baseline | Page passes the checklist in [`references/17-ux-patterns.md`](references/17-ux-patterns.md): hero on disconnect, lifecycle stepper, role banner (with spectator branch + local-dev onboarding on chain 31337), one primary CTA per state, copy-on-click handles, "how does this stay private?" explainer, collapsible on-chain state, inline status banner. **Disabled buttons are not a substitute for a role-aware empty state.** | same |
 
 In all cases:
 - Test covers happy path + at least one branch of every `FHE.select` + a permission test (a non-permitted address fails to decrypt) + an uninitialised-handle test.
@@ -366,6 +367,7 @@ The full deployment workflow (env-file pre-flight, Sepolia run, Vercel push, pos
 - [`12-production-edge-cases.md`](references/12-production-edge-cases.md) — non-obvious gotchas (open when polishing for prod)
 - [`15-failure-modes.md`](references/15-failure-modes.md) — operational failure catalog (open when setup or build breaks)
 - [`16-deployment-workflow.md`](references/16-deployment-workflow.md) — env-file pre-flight, Sepolia + Vercel deploy, post-deploy doc update (open when shipping)
+- [`17-ux-patterns.md`](references/17-ux-patterns.md) — lifecycle stepper, role banners, local-dev onboarding, copy chips (open when building the home page)
 
 ### Foundry / SDK v3 track (current canonical)
 - [`13-foundry-toolchain.md`](references/13-foundry-toolchain.md) — forge-fhevm, soldeer, cleartext-mode KMS proofs (open when on the Foundry track)
